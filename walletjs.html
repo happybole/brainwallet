@@ -2,8 +2,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>JS Bitcoin BrainWallet Generator and  Construct Transaction and Sign / Ethereum BrainWallet Generator(比特币脑钱包生成器,以太坊脑钱包生成器) - JS Demonstration of Bitcoin and Ethereum Brain Password, Private Key, Public Key, and Address Generation Steps and Relationships(JS演示比特币和以太坊脑口令、私钥、公钥及地址生成步骤及相互关系) - Construct Transaction and Sign Transaction构建交易并签交易名</title>
-<meta name="keywords" content="javascript, bitcoin, brainwallet, cold wallet, offline wallet, construct transaction, offline sign, ethereum, 比特币, 脑钱包, 冷钱包, 离线钱包, 构建交易, 离线签名, 以太坊">
+<title>JS Bitcoin BrainWallet Generator and  Construct Transaction and Offline Sign Transaction / Ethereum BrainWallet Generator(比特币脑钱包生成器,以太坊脑钱包生成器) - JS Demonstration of Bitcoin and Ethereum Brain Password, Private Key, Public Key, and Address Generation Steps and Relationships(JS演示比特币和以太坊脑口令、私钥、公钥及地址生成步骤及相互关系) - Construct Transaction and Sign Transaction构建交易并签交易名</title>
+<meta name="keywords" content="javascript, bitcoin, brainwallet, cold wallet, offline wallet, construct transaction, offline sign, ethereum">
 <style type="text/css">
 	#ethereum{display:none}
 	.menu, .preface, .brain, .priKey, .pubKey, .address, .VerifySignature, .TX {border-style:solid; border-width:5px; border-color:428bca; padding:0px 3px 3px 3px}
@@ -1591,7 +1591,16 @@
 			return "P2WSH";
 		}
 	}
-</script>
+	
+	//把字符串按固定长度分割成数组
+	function mySplit(str,leng){
+		let arr = [];
+		let index = 0;
+		while(index<str.length){
+			arr.push(str.slice(index,index +=leng));
+		}
+		return arr;
+	}
 </script>
 </head>
 <body>
@@ -2010,9 +2019,9 @@
 		</div>
 		<p id="txRAW-open-btn" class="show"><button onclick="openContent('txRAW-content', 'txRAW-open-btn', 'txRAW-close-btn')">More - 查看更多</button></p>
 		<p id="txRAW-close-btn" class="hidden"><button onclick="closeContent('txRAW-content', 'txRAW-open-btn', 'txRAW-close-btn')">Hide - 隐藏内容</button></p>
-		<button onclick="document.getElementById('txRaw').value = txToRaw(document.getElementById('txJSON').value, Number(document.getElementById('txHashType').value), document.getElementById('txScriptType').value); jQuery(function(){jQuery('#txRawQrcode').qrcode(str2rstr_utf8(document.getElementById('txRaw').value));}); if(document.getElementById('txRawQrcode').childNodes.length > 1){document.getElementById('txRawQrcode').childNodes[0].remove();}">Generate Unsigned Hex TX - 生成待签名的Hex交易串</button>
+		<button onclick="document.getElementById('txRaw').value = txToRaw(document.getElementById('txJSON').value, Number(document.getElementById('txHashType').value), document.getElementById('txScriptType').value); document.getElementById('BTN_txRAW').onclick();">Generate Unsigned Hex TX - 生成待签名的Hex交易串</button>
 		<button onclick="var myObj = txParseRaw(document.getElementById('txRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse hex to JSON - 解析Hex交易串成JSON格式</button>
-		<button onclick="jQuery(function(){jQuery('#txRawQrcode').qrcode(str2rstr_utf8(document.getElementById('txRaw').value));}); if(document.getElementById('txRawQrcode').childNodes.length > 1){document.getElementById('txRawQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button>
+		<button id="BTN_txRAW" onclick="var arr = mySplit(document.getElementById('txRaw').value, 400); for(var i = 0; i < arr.length; i++){jQuery(function(){jQuery('#txRawQrcode').qrcode(str2rstr_utf8(arr[i]));}); document.getElementById('txRawQrcode').appendChild(document.createElement('br')); document.getElementById('txRawQrcode').appendChild(document.createElement('br'));} if(document.getElementById('txRawQrcode').childNodes.length > arr.length * 3){for(var i = 0; i < arr.length * 3; i++){document.getElementById('txRawQrcode').childNodes[0].remove();}}">Generate QR code - 生成二维码</button>
 		<textarea id="txRaw" rows="7" spellcheck="false"></textarea><br/>
 		<div id="txRawQrcode"></div><br/>
 	
@@ -2049,11 +2058,12 @@
 		</div>
 		<p id="txRAWSigned-open-btn" class="show"><button onclick="openContent('txRAWSigned-content', 'txRAWSigned-open-btn', 'txRAWSigned-close-btn')">More - 查看更多</button></p>
 		<p id="txRAWSigned-close-btn" class="hidden"><button onclick="closeContent('txRAWSigned-content', 'txRAWSigned-open-btn', 'txRAWSigned-close-btn')">Hide - 隐藏内容</button></p>
-		<button onclick="document.getElementById('txSignedRaw').value =txToSignedRaw(document.getElementById('txRaw').value, document.getElementById('txPriKey').value, document.getElementById('txScriptType').value); jQuery(function(){jQuery('#txRAWSignedQrcode').qrcode(str2rstr_utf8(document.getElementById('txSignedRaw').value));}); if(document.getElementById('txRAWSignedQrcode').childNodes.length > 1){document.getElementById('txRAWSignedQrcode').childNodes[0].remove();}">Sign TX - 签名交易</button>
+		<button onclick="document.getElementById('txSignedRaw').value =txToSignedRaw(document.getElementById('txRaw').value, document.getElementById('txPriKey').value, document.getElementById('txScriptType').value); document.getElementById('BTN_txSignedRaw').onclick();">Sign TX - 签名交易</button>
 		<button onclick="var myObj = txParseRaw(document.getElementById('txSignedRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse Hex to JSON - 解析Raw交易串成JSON格式</button>
-		<button onclick="jQuery(function(){jQuery('#txRAWSignedQrcode').qrcode(str2rstr_utf8(document.getElementById('txSignedRaw').value));}); if(document.getElementById('txRAWSignedQrcode').childNodes.length > 1){document.getElementById('txRAWSignedQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button>
+		<button id="BTN_txSignedRaw" onclick="var arr = mySplit(document.getElementById('txSignedRaw').value, 400); for(var i = 0; i < arr.length; i++){jQuery(function(){jQuery('#txSignedRawQrcode').qrcode(str2rstr_utf8(arr[i]));}); document.getElementById('txSignedRawQrcode').appendChild(document.createElement('br')); document.getElementById('txSignedRawQrcode').appendChild(document.createElement('br'));} if(document.getElementById('txSignedRawQrcode').childNodes.length > arr.length * 3){for(var i = 0; i < arr.length * 3; i++){document.getElementById('txSignedRawQrcode').childNodes[0].remove();}}">Generate QR code - 生成二维码</button>
 		<textarea id="txSignedRaw" rows="7" spellcheck="false"></textarea><br/>
-		<div id="txRAWSignedQrcode"></div><br/>
+		<div id="feeperByte" style="font-size:13px">Fee(手续费): sats/vB</div>
+		<div id="txSignedRawQrcode"></div><br/>
 		
 		<div class="h2">【Broadcast TX - 广播交易】</div>
 		<p>Mainnet Broadcast URL - 主网广播地址：<a href="https://blockstream.info/tx/push" target="_blank">https://blockstream.info/tx/push</a></p><br/>
