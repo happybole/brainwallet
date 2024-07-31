@@ -1601,6 +1601,25 @@
 		}
 		return arr;
 	}
+	
+	//生成二维码
+	function generateQrcode(content, parentElement){
+		var arr = mySplit(content, 400);
+		for(var i = 0; i < arr.length; i++){
+			jQuery(function(){jQuery("#" + parentElement).qrcode(str2rstr_utf8(arr[i]));});
+			document.getElementById(parentElement).appendChild(document.createElement("br"));
+			document.getElementById(parentElement).appendChild(document.createElement("br"));
+		}
+	}
+	
+	//清除二维码
+	function deleteQrcode(parentElement){
+		if(document.getElementById(parentElement).childNodes.length > 0){
+			while(document.getElementById(parentElement).childNodes.length > 0){
+		 		document.getElementById(parentElement).childNodes[0].remove();
+			}
+		}
+	}
 </script>
 </head>
 <body>
@@ -1619,10 +1638,10 @@
 	<div class="h2">【Source - 源】</div>
 	<p>The brain regulations must include hash values and require replacement or cropping modifications to the hash values. For example, it can be set as: BrainPassword1+X(SHA256(BrainPassword2))+Y(SHA256(SHA256(BrainPassword3))+… Among them, X() and Y() are modifications to the hash value.</p><br/>
 	<p>脑规则中必须包括哈希值，且需要对哈希值进行替换或裁剪修改。例如可以设置成：脑口令1+X(SHA256(脑口令2))+Y(SHA256(SHA256(脑口令3)))+...，其中X()、Y()即对哈希值的修改。</p><br/>
-	<button onclick="document.getElementById('source').value = ''; document.getElementById('sourceQrcode').childNodes[0].remove();">Clear - 清空</button>
-	<button onclick="jQuery(function(){jQuery('#sourceQrcode').qrcode(str2rstr_utf8(document.getElementById('source').value));}); if(document.getElementById('sourceQrcode').childNodes.length > 1){document.getElementById('sourceQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
-	<textarea id="source" rows="3" spellcheck="false" oninput="ResizeTextarea(document.getElementById('source'),3,100)"></textarea><br/><br/>
-	<div id="sourceQrcode"></div>
+	<button onclick="document.getElementById('source').value = ''; deleteQrcode('sourceQrcode');">Clear - 清空</button>
+	<button id="BTN_sourceQrcode" onclick="deleteQrcode('sourceQrcode'); generateQrcode(document.getElementById('source').value, 'sourceQrcode');">Generate QR code - 生成二维码</button><br/>
+	<textarea id="source" rows="3" spellcheck="false" oninput="ResizeTextarea(document.getElementById('source'),3,100)"></textarea><br/>
+	<div id="sourceQrcode"></div><br/>
 	
 	<!--Entropy - 熵-->
 	<div class="h2">【Entropy - 熵】</div>
@@ -1651,13 +1670,13 @@
 
 	<div class="h2">【English Mnemonic Words - 英文助记词】</div>
 	<button onclick="document.getElementById('mnemonicEntropy').value = parseMnemonic(document.getElementById('mnemonic_en').value, 'en'); if(document.getElementById('mnemonicEntropy').value.length == 32){document.getElementById('mnemonicNum').value = 12}else if(document.getElementById('mnemonicEntropy').value.length == 64){document.getElementById('mnemonicNum').value = 24}else{return false;} document.getElementById('mnemonic_cn').value = toMnemonic(document.getElementById('mnemonicEntropy').value, document.getElementById('mnemonicNum').value).mnemonic_cn;">Inverse Calculation - 逆算</button>
-	<button onclick="jQuery(function(){jQuery('#mnemonic_enQrcode').qrcode(str2rstr_utf8(document.getElementById('mnemonic_en').value));}); if(document.getElementById('mnemonic_enQrcode').childNodes.length > 1){document.getElementById('mnemonic_enQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button>
+	<button id="BTN_mnemonic_enQrcode" onclick="deleteQrcode('mnemonic_enQrcode'); generateQrcode(document.getElementById('mnemonic_en').value, 'mnemonic_enQrcode');">Generate QR code - 生成二维码</button>
 	<textarea id="mnemonic_en" rows="3"></textarea>
 	<div id="mnemonic_enQrcode"></div>
 
 	<div class="h2">【Chinese Mnemonic Words - 中文助记词】</div>
 	<button onclick="document.getElementById('mnemonicEntropy').value = parseMnemonic(document.getElementById('mnemonic_cn').value, 'cn'); if(document.getElementById('mnemonicEntropy').value.length == 32){document.getElementById('mnemonicNum').value = 12}else if(document.getElementById('mnemonicEntropy').value.length == 64){document.getElementById('mnemonicNum').value = 24}else{return false;} document.getElementById('mnemonic_en').value = toMnemonic(document.getElementById('mnemonicEntropy').value, document.getElementById('mnemonicNum').value).mnemonic_en;">Inverse Calculation - 逆算</button>
-	<button onclick="jQuery(function(){jQuery('#mnemonic_cnQrcode').qrcode(str2rstr_utf8(document.getElementById('mnemonic_cn').value));}); if(document.getElementById('mnemonic_cnQrcode').childNodes.length > 1){document.getElementById('mnemonic_cnQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button>
+	<button id="BTN_mnemonic_cnQrcode" onclick="deleteQrcode('mnemonic_cnQrcode'); generateQrcode(document.getElementById('mnemonic_cn').value, 'mnemonic_cnQrcode');">Generate QR code - 生成二维码</button>
 	<textarea id="mnemonic_cn" rows="2"></textarea>
 	<div id="mnemonic_cnQrcode"></div>
 </div>
@@ -1671,7 +1690,7 @@
 		<p>几乎所有的64位16进制字符串都可以作为私钥。合法私钥的取值范围(0,FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141)。</p><br/>
 		<button onclick="if(document.getElementById('mnemonicEntropy').value == ''){alert('The mnemonic entropy is empty. - 助记词熵为空。'); return false;} document.getElementById('priKey').value = Crypto.SHA256(document.getElementById('mnemonicEntropy').value);  if(fromHex(document.getElementById('priKey').value)==0 || fromHex(document.getElementById('priKey').value).compareTo(fromHex('FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141'))>=0){alert('私钥值不合法，请重新生成私钥'); document.getElementById('priKey').value = '';}">SHA256(Mnemonic Entropy)</button>
 		<button onclick="if(document.getElementById('priKey').value == ''){alert('The private key is empty. - 私钥为空。'); return false;} if(isHex(document.getElementById('priKey').value)==false || document.getElementById('priKey').value.length != 64){alert('The format of private key is incorrect. - 私钥输入格式不正确。'); return false;} document.getElementById('BTN_Ver_Pri_Com').onclick(); document.getElementById('BTN_VerPriSHA256DB').onclick(); document.getElementById('BTN_Ver_Pri_Com_Che').onclick(); document.getElementById('BTN_priBS58C').onclick(); document.getElementById('BTN_pubKey').onclick(); document.getElementById('BTN_pubHash160forLegacy').onclick(); document.getElementById('BTN_legacyVer_pubHash').onclick(); document.getElementById('BTN_VerLegacySHA256DB').onclick(); document.getElementById('BTN_legacyVer_pubHash_Che').onclick(); document.getElementById('BTN_legacyBS58C').onclick(); document.getElementById('BTN_pubHash160forNested').onclick(); document.getElementById('BTN_nestedRedeem').onclick(); document.getElementById('BTN_nestedAddr').onclick(); document.getElementById('BTN_nestedVer_nestedAddr').onclick(); document.getElementById('BTN_VerNestedSHA256DB').onclick(); document.getElementById('BTN_nestedVer_nestedAddr_Che').onclick(); document.getElementById('BTN_nestedBS58C').onclick(); document.getElementById('BTN_pubHash160forNative').onclick(); document.getElementById('BTN_nativeAddrtoWords').onclick(); document.getElementById('BTN_nativeVer_nativeAddrtoWords').onclick(); document.getElementById('BTN_nativeFinal').onclick();">One-click to generate address - 一键生成地址</button>
-		<button onclick="jQuery(function(){jQuery('#priKeyQrcode').qrcode(str2rstr_utf8(document.getElementById('priKey').value));}); if(document.getElementById('priKeyQrcode').childNodes.length > 1){document.getElementById('priKeyQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+		<button id="BTN_priKeyQrcode" onclick="deleteQrcode('priKeyQrcode'); generateQrcode(document.getElementById('priKey').value, 'priKeyQrcode');">Generate QR code - 生成二维码</button><br/>
 		<textarea id="priKey" rows="2" spellcheck="false"></textarea><br/>
 		<div id="priKeyQrcode"></div>
 	
@@ -1707,10 +1726,10 @@
 	
 		<!--Base58Check Encoded Private Key - Base58Check编码私钥-->
 		<div class="h2">【Base58Check encoded private key - Base58Check编码私钥】</div>
-		<button id="BTN_priBS58C" onclick="if(isHex(document.getElementById('Ver_Pri_Com_Che').value)==false){alert('The input value is not hex. - 输入值不是16进制.'); return false;} document.getElementById('priBS58C').value = Bitcoin.Base58.encode(Crypto.util.hexToBytes(document.getElementById('Ver_Pri_Com_Che').value)); jQuery(function(){jQuery('#priBS58CQrcode').qrcode(str2rstr_utf8(document.getElementById('priBS58C').value));}); if(document.getElementById('priBS58CQrcode').childNodes.length > 1){document.getElementById('priBS58CQrcode').childNodes[0].remove();}">Base58(Version+privKey+CompressedFlag+Checksum)</button>
-		<button onclick="document.getElementById('priBS58C').value = ''; document.getElementById('priBS58CQrcode').childNodes[0].remove();">Clear - 清空</button>
+		<button id="BTN_priBS58C" onclick="if(isHex(document.getElementById('Ver_Pri_Com_Che').value)==false){alert('The input value is not hex. - 输入值不是16进制.'); return false;} document.getElementById('priBS58C').value = Bitcoin.Base58.encode(Crypto.util.hexToBytes(document.getElementById('Ver_Pri_Com_Che').value)); document.getElementById('BTN_priBS58CQrcode').onclick();">Base58(Version+privKey+CompressedFlag+Checksum)</button>
+		<button onclick="document.getElementById('priBS58C').value = ''; deleteQrcode('priBS58CQrcode');">Clear - 清空</button>
 		<button onclick="document.getElementById('Ver_Pri_Com_Che').value = Crypto.util.bytesToHex(Bitcoin.Base58.decode(document.getElementById('priBS58C').value));">Inverse Calculation - 逆算</button>
-		<button onclick="jQuery(function(){jQuery('#priBS58CQrcode').qrcode(str2rstr_utf8(document.getElementById('priBS58C').value));}); if(document.getElementById('priBS58CQrcode').childNodes.length > 1){document.getElementById('priBS58CQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+		<button id="BTN_priBS58CQrcode" onclick="deleteQrcode('priBS58CQrcode'); generateQrcode(document.getElementById('priBS58C').value, 'priBS58CQrcode');">Generate QR code - 生成二维码</button><br/>
 		<textarea id="priBS58C" rows="2" spellcheck="false"></textarea><br/>
 		<div id="priBS58CQrcode"></div>
 	</div>
@@ -1722,8 +1741,8 @@
 		<p>Compressed public key: Prefix (if y is even, prefix is 02; if y is odd, prefix is 03)+X coordinate (32 bytes); Uncompressed public key: Prefix (04)+X coordinate (32 bytes)+Y coordinate (32 bytes).</p><br/>
 		<p>压缩公钥：前缀(如果y是偶数，前缀是02；如果y是奇数，前缀是03)+X坐标(32字节)；未压缩公钥：前缀(04)+X坐标(32字节)+Y坐标(32字节)。</p><br/>
 		<button id="BTN_pubKey" onclick="if(document.getElementById('priBS58C').value == ''){alert('The Base58Check encoded private key is empty. - Base58Check编码私钥为空。'); return false;} document.getElementById('pubKey').value = priToPub(document.getElementById('priBS58C').value);">Select SECP256K1 elliptic curve to generate public key - 选取SECP256K1椭圆曲线生成公钥</button>
-		<button onclick="document.getElementById('pubKey').value = ''; document.getElementById('pubKeyQrcode').childNodes[0].remove();">Clear - 清空</button>
-		<button onclick="jQuery(function(){jQuery('#pubKeyQrcode').qrcode(str2rstr_utf8(document.getElementById('pubKey').value));}); if(document.getElementById('pubKeyQrcode').childNodes.length > 1){document.getElementById('pubKeyQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+		<button onclick="document.getElementById('pubKey').value = ''; deleteQrcode('pubKeyQrcode');">Clear - 清空</button>
+		<button onclick="deleteQrcode('pubKeyQrcode'); generateQrcode(document.getElementById('pubKey').value, 'pubKeyQrcode');">Generate QR code - 生成二维码</button><br/>
 		<textarea id="pubKey" rows="3" spellcheck="false"></textarea><br/>
 		<div id="pubKeyQrcode"></div>
 	</div>
@@ -1771,11 +1790,11 @@
 	
 			<!--Base58Check Encoded Address - 地址Base58Check-->
 			<div class="h2">【Base58Check Encoded Address - Base58Check编码地址】</div>
-			<button id="BTN_legacyBS58C" onclick="if(isHex(document.getElementById('legacyVer_pubHash_Che').value)==false){alert('The input value is not hex. - 输入值不是16进制。'); return false;} document.getElementById('legacyBS58C').value = Bitcoin.Base58.encode(Crypto.util.hexToBytes(document.getElementById('legacyVer_pubHash_Che').value)); jQuery(function(){jQuery('#legacyQrcode').qrcode(str2rstr_utf8(document.getElementById('legacyBS58C').value));}); if(document.getElementById('legacyQrcode').childNodes.length > 1){document.getElementById('legacyQrcode').childNodes[0].remove();}">Base58(Version+Address+Checksum) - Base58(版本号+地址+校验码)</button>
+			<button id="BTN_legacyBS58C" onclick="if(isHex(document.getElementById('legacyVer_pubHash_Che').value)==false){alert('The input value is not hex. - 输入值不是16进制。'); return false;} document.getElementById('legacyBS58C').value = Bitcoin.Base58.encode(Crypto.util.hexToBytes(document.getElementById('legacyVer_pubHash_Che').value)); document.getElementById('BTN_legacyBS58CQrcode').onclick();">Base58(Version+Address+Checksum) - Base58(版本号+地址+校验码)</button>
 			<button onclick="document.getElementById('legacyVer_pubHash_Che').value = Crypto.util.bytesToHex(Bitcoin.Base58.decode(document.getElementById('legacyBS58C').value));">Inverse Calculation - 逆算</button>
-			<button onclick="jQuery(function(){jQuery('#legacyQrcode').qrcode(str2rstr_utf8(document.getElementById('legacyBS58C').value));}); if(document.getElementById('legacyQrcode').childNodes.length > 1){document.getElementById('legacyQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+			<button id="BTN_legacyBS58CQrcode" onclick="deleteQrcode('legacyBS58CQrcode'); generateQrcode(document.getElementById('legacyBS58C').value, 'legacyBS58CQrcode');">Generate QR code - 生成二维码</button><br/>
 			<textarea id="legacyBS58C" rows="2" spellcheck="false"></textarea><br/>
-			<div id="legacyQrcode"></div>
+			<div id="legacyBS58CQrcode"></div>
 		</div>
 	
 		
@@ -1837,11 +1856,11 @@
 	
 			<!---Base58Check Encoded Address - 地址Base58Check-->
 			<div class="h2">【-Base58Check Encoded Address - Base58Check编码地址】</div>
-			<button id="BTN_nestedBS58C" onclick="if(document.getElementById('pubKey').value.length > 66){alert('The segWit address does not support the uncompressed public key. - SegWit地址不支持非压缩公钥。'); return false;} if(isHex(document.getElementById('nestedVer_nestedAddr_Che').value)==false){alert('The input value is not hex. - 输入值不是16进制。'); return false;} document.getElementById('nestedBS58C').value = Bitcoin.Base58.encode(Crypto.util.hexToBytes(document.getElementById('nestedVer_nestedAddr_Che').value)); jQuery(function(){jQuery('#nestedQrcode').qrcode(str2rstr_utf8(document.getElementById('nestedBS58C').value));}); if(document.getElementById('nestedQrcode').childNodes.length > 1){document.getElementById('nestedQrcode').childNodes[0].remove();}">Base58(Version+Address+Checksum)</button>
+			<button id="BTN_nestedBS58C" onclick="if(document.getElementById('pubKey').value.length > 66){alert('The segWit address does not support the uncompressed public key. - SegWit地址不支持非压缩公钥。'); return false;} if(isHex(document.getElementById('nestedVer_nestedAddr_Che').value)==false){alert('The input value is not hex. - 输入值不是16进制。'); return false;} document.getElementById('nestedBS58C').value = Bitcoin.Base58.encode(Crypto.util.hexToBytes(document.getElementById('nestedVer_nestedAddr_Che').value)); document.getElementById('BTN_nestedBS58CQrcode').onclick();">Base58(Version+Address+Checksum)</button>
 			<button onclick="document.getElementById('nestedVer_nestedAddr_Che').value = Crypto.util.bytesToHex(Bitcoin.Base58.decode(document.getElementById('nestedBS58C').value));">Inverse Calculation - 逆算</button>
-			<button onclick="jQuery(function(){jQuery('#nestedQrcode').qrcode(str2rstr_utf8(document.getElementById('nestedBS58C').value));}); if(document.getElementById('nestedQrcode').childNodes.length > 1){document.getElementById('nestedQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+			<button id="BTN_nestedBS58CQrcode" onclick="deleteQrcode('nestedBS58CQrcode'); generateQrcode(document.getElementById('nestedBS58C').value, 'nestedBS58CQrcode');"">Generate QR code - 生成二维码</button><br/>
 			<textarea id="nestedBS58C" rows="2" spellcheck="false"></textarea><br/>
-			<div id="nestedQrcode"></div>
+			<div id="nestedBS58CQrcode"></div>
 		</div>
 	
 	
@@ -1885,11 +1904,11 @@
 			<div class="h2">【Bech32Check Address - Bech32Check地址】</div>
 			<p>The final Bech32Check encoding address=Prefix+Separator+Data(Version+Bech32 Address)+Checksum. The encode function calculates and concatenates prefixe, separator, Bech32 addresses with version numbers, and checksums. The checksum is a six character code calculated using the prefix and the Bech32 address with a version number, concatenated directly to the end.</p><br/>
 			<p>最终的Bech32Check编码地址=前缀+分隔符+数据(版本号+"裸"Bech32地址)+校验码。encode函数完成前缀、分隔符、带版本号"裸"Bech32地址和校验码计算及拼接。校验码是通过前缀和带版本号的"裸"Bech32地址计算出来的6个字符，直接拼接到最后。</p><br/>
-			<button id="BTN_nativeFinal" onclick="if(document.getElementById('pubKey').value.length > 66){alert('The segWit address does not support the uncompressed public key. - SegWit地址不支持非压缩公钥！'); return false;} document.getElementById('nativeFinal').value = getLibraryFromEncoding('bech32').encode(document.getElementById('HRP_Seperator').value.substr(0,2), document.getElementById('nativeVer_nativeAddrtoWords').value.split(',')); jQuery(function(){jQuery('#nativeQrcode').qrcode(str2rstr_utf8(document.getElementById('nativeFinal').value));});  if(document.getElementById('nativeQrcode').childNodes.length > 1){document.getElementById('nativeQrcode').childNodes[0].remove();}">encode(Prefix+Data(Version+Bech32 Address))</button>
+			<button id="BTN_nativeFinal" onclick="if(document.getElementById('pubKey').value.length > 66){alert('The segWit address does not support the uncompressed public key. - SegWit地址不支持非压缩公钥！'); return false;} document.getElementById('nativeFinal').value = getLibraryFromEncoding('bech32').encode(document.getElementById('HRP_Seperator').value.substr(0,2), document.getElementById('nativeVer_nativeAddrtoWords').value.split(',')); document.getElementById('BTN_nativeFinalQrcode').onclick();">encode(Prefix+Data(Version+Bech32 Address))</button>
 			<button onclick="document.getElementById('HRP_Seperator').value = getLibraryFromEncoding('bech32').decode(document.getElementById('nativeFinal').value).prefix + '1'; var words = getLibraryFromEncoding('bech32').decode(document.getElementById('nativeFinal').value).words; document.getElementById('nativeVer_nativeAddrtoWords').value = words; document.getElementById('nativeVer_nativeAddrtoBech32').value = ''; for(i=0;i<words.length;i++){document.getElementById('nativeVer_nativeAddrtoBech32').value += ALPHABET.charAt(words[i])}">Inverse Calculation - 逆算</button>
-			<button onclick="jQuery(function(){jQuery('#nativeQrcode').qrcode(str2rstr_utf8(document.getElementById('nativeFinal').value));}); if(document.getElementById('nativeQrcode').childNodes.length > 1){document.getElementById('nativeQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+			<button id="BTN_nativeFinalQrcode" onclick="deleteQrcode('nativeFinalQrcode'); generateQrcode(document.getElementById('nativeFinal').value, 'nativeFinalQrcode');">Generate QR code - 生成二维码</button><br/>
 			<textarea id="nativeFinal" rows="2" spellcheck="false"></textarea><br/>
-			<div id="nativeQrcode"></div>
+			<div id="nativeFinalQrcode"></div>
 		</div>
 	</div>
 	
@@ -2019,9 +2038,9 @@
 		</div>
 		<p id="txRAW-open-btn" class="show"><button onclick="openContent('txRAW-content', 'txRAW-open-btn', 'txRAW-close-btn')">More - 查看更多</button></p>
 		<p id="txRAW-close-btn" class="hidden"><button onclick="closeContent('txRAW-content', 'txRAW-open-btn', 'txRAW-close-btn')">Hide - 隐藏内容</button></p>
-		<button onclick="document.getElementById('txRaw').value = txToRaw(document.getElementById('txJSON').value, Number(document.getElementById('txHashType').value), document.getElementById('txScriptType').value); document.getElementById('BTN_txRAW').onclick();">Generate Unsigned Hex TX - 生成待签名的Hex交易串</button>
+		<button onclick="document.getElementById('txRaw').value = txToRaw(document.getElementById('txJSON').value, Number(document.getElementById('txHashType').value), document.getElementById('txScriptType').value); document.getElementById('BTN_txRawQrcode').onclick();">Generate Unsigned Hex TX - 生成待签名的Hex交易串</button>
 		<button onclick="var myObj = txParseRaw(document.getElementById('txRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse hex to JSON - 解析Hex交易串成JSON格式</button>
-		<button id="BTN_txRAW" onclick="var arr = mySplit(document.getElementById('txRaw').value, 400); for(var i = 0; i < arr.length; i++){jQuery(function(){jQuery('#txRawQrcode').qrcode(str2rstr_utf8(arr[i]));}); document.getElementById('txRawQrcode').appendChild(document.createElement('br')); document.getElementById('txRawQrcode').appendChild(document.createElement('br'));} if(document.getElementById('txRawQrcode').childNodes.length > arr.length * 3){for(var i = 0; i < arr.length * 3; i++){document.getElementById('txRawQrcode').childNodes[0].remove();}}">Generate QR code - 生成二维码</button>
+		<button id="BTN_txRawQrcode" onclick="deleteQrcode('txRawQrcode'); generateQrcode(document.getElementById('txRaw').value, 'txRawQrcode');">Generate QR code - 生成二维码</button>
 		<textarea id="txRaw" rows="7" spellcheck="false"></textarea><br/>
 		<div id="txRawQrcode"></div><br/>
 	
@@ -2058,9 +2077,9 @@
 		</div>
 		<p id="txRAWSigned-open-btn" class="show"><button onclick="openContent('txRAWSigned-content', 'txRAWSigned-open-btn', 'txRAWSigned-close-btn')">More - 查看更多</button></p>
 		<p id="txRAWSigned-close-btn" class="hidden"><button onclick="closeContent('txRAWSigned-content', 'txRAWSigned-open-btn', 'txRAWSigned-close-btn')">Hide - 隐藏内容</button></p>
-		<button onclick="document.getElementById('txSignedRaw').value =txToSignedRaw(document.getElementById('txRaw').value, document.getElementById('txPriKey').value, document.getElementById('txScriptType').value); document.getElementById('BTN_txSignedRaw').onclick();">Sign TX - 签名交易</button>
+		<button onclick="document.getElementById('txSignedRaw').value =txToSignedRaw(document.getElementById('txRaw').value, document.getElementById('txPriKey').value, document.getElementById('txScriptType').value); document.getElementById('BTN_txSignedRawQrcode').onclick();">Sign TX - 签名交易</button>
 		<button onclick="var myObj = txParseRaw(document.getElementById('txSignedRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse Hex to JSON - 解析Raw交易串成JSON格式</button>
-		<button id="BTN_txSignedRaw" onclick="var arr = mySplit(document.getElementById('txSignedRaw').value, 400); for(var i = 0; i < arr.length; i++){jQuery(function(){jQuery('#txSignedRawQrcode').qrcode(str2rstr_utf8(arr[i]));}); document.getElementById('txSignedRawQrcode').appendChild(document.createElement('br')); document.getElementById('txSignedRawQrcode').appendChild(document.createElement('br'));} if(document.getElementById('txSignedRawQrcode').childNodes.length > arr.length * 3){for(var i = 0; i < arr.length * 3; i++){document.getElementById('txSignedRawQrcode').childNodes[0].remove();}}">Generate QR code - 生成二维码</button>
+		<button id="BTN_txSignedRawQrcode" onclick="deleteQrcode('txSignedRawQrcode'); generateQrcode(document.getElementById('txSignedRaw').value, 'txSignedRawQrcode');">Generate QR code - 生成二维码</button>
 		<textarea id="txSignedRaw" rows="7" spellcheck="false"></textarea><br/>
 		<div id="feeperByte" style="font-size:13px">Fee(手续费): sats/vB</div>
 		<div id="txSignedRawQrcode"></div><br/>
@@ -2088,7 +2107,7 @@
 		<p>1. Actually, it is to sign the double hash value SHA256 (hexTobytes (SHA256 (hexTobytes) to be signed). 2. For security reasons, random numbers are introduced during the signature process. When signing the same information, the signature value changes every time, but each signature value is valid.</p><br/>
 		<p>1.实际上是对待签名的双哈希值SHA256(hexToBytes(SHA256(hexToBytes(待签名信息))))进行签名。2.为了安全，签名时引入了随机数，对同一信息进行签名时，每次签名值都发生变化，但每个签名值都是有效的。</p><br/>
 		<button onclick="if(document.getElementById('message').value == ''){alert('The info is empty! - 信息为空！'); return false;} if(isHex(document.getElementById('message').value)== false){alert('待签名信息不是16进制！'); return false;} if(document.getElementById('priKeytoSign').value == ''){alert('The private key is empty! - 私钥为空！'); return false;} document.getElementById('Sign').value = Sign(document.getElementById('message').value, document.getElementById('priKeytoSign').value);">Sign - 签名</button>
-		<button onclick="jQuery(function(){jQuery('#SignQrcode').qrcode(str2rstr_utf8(document.getElementById('Sign').value));}); if(document.getElementById('SignQrcode').childNodes.length > 1){document.getElementById('SignQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+		<button id="BTN_SignQrcode" onclick="deleteQrcode('SignQrcode'); generateQrcode(document.getElementById('Sign').value, 'SignQrcode');">Generate QR code - 生成二维码</button><br/>
 		<textarea id="Sign" rows="3" spellcheck="false"></textarea><br/><br/>
 		<div id="SignQrcode"></div>
 		
@@ -2111,9 +2130,9 @@
 		<div class="h2">【Private Key - 私钥】</div>
 		<p>Almost all 64 bit hex strings can be used as private keys. The range of values for legitimate private keys is (0,FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141)</p><br/>
 		<p>几乎所有的64位16进制字符串都可以作为私钥。合法私钥的取值范围(0,FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141)。</p><br/>
-		<button onclick="if(document.getElementById('mnemonicEntropy').value == ''){alert('The mnemonic entropy is empty. - 助记词熵为空。'); return false;} document.getElementById('e_priKey').value = Crypto.SHA256(document.getElementById('mnemonicEntropy').value);  if(fromHex(document.getElementById('e_priKey').value)==0 || fromHex(document.getElementById('e_priKey').value).compareTo(fromHex('FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141'))>=0){alert('私钥值不合法，请重新生成私钥'); document.getElementById('e_priKey').value = ''; return false;}">SHA256(Mnemonic Entropy)</button>
+		<button onclick="if(document.getElementById('mnemonicEntropy').value == ''){alert('The mnemonic entropy is empty. - 助记词熵为空。'); return false;} document.getElementById('e_priKey').value = Crypto.SHA256(document.getElementById('mnemonicEntropy').value);  if(fromHex(document.getElementById('e_priKey').value)==0 || fromHex(document.getElementById('e_priKey').value).compareTo(fromHex('FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141'))>=0){alert('私钥值不合法，请重新生成私钥'); document.getElementById('e_priKey').value = ''; return false;} document.getElementById('BTN_e_priKeyQrcode').onclick();">SHA256(Mnemonic Entropy)</button>
 		<button onclick="if(document.getElementById('e_priKey').value == ''){alert('The private key is empty. - 私钥为空。'); return false;} if(isHex(document.getElementById('e_priKey').value)==false || document.getElementById('e_priKey').value.length != 64){alert('The format of private key is incorrect. - 私钥输入格式不正确。'); return false;} document.getElementById('e_BTN_pubKey').onclick(); document.getElementById('BTN_pubKeccak256').onclick(); document.getElementById('e_BTN_checksumAddr').onclick();">One-click to generate address - 一键生成地址</button>
-		<button onclick="jQuery(function(){jQuery('#e_priKeyQrcode').qrcode(str2rstr_utf8(document.getElementById('e_priKey').value));}); if(document.getElementById('e_priKeyQrcode').childNodes.length > 1){document.getElementById('e_priKeyQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+		<button id="BTN_e_priKeyQrcode" onclick="deleteQrcode('e_priKeyQrcode'); generateQrcode(document.getElementById('e_priKey').value, 'e_priKeyQrcode');">Generate QR code - 生成二维码</button><br/>
 		<textarea id="e_priKey" rows="2" spellcheck="false"></textarea><br/>
 		<div id="e_priKeyQrcode"></div>
 
@@ -2150,10 +2169,10 @@
 	  	
 			<!--Base58Check Encoded Private Key - Base58Check编码私钥-->
 			<div class="h2">【Base58Check encoded private key - Base58Check编码私钥】</div>
-			<button id="e_BTN_priBS58C" onclick="if(isHex(document.getElementById('e_Ver_Pri_Com_Che').value)==false){alert('The input value is not hex. - 输入值不是16进制.'); return false;} document.getElementById('e_priBS58C').value = Bitcoin.Base58.encode(Crypto.util.hexToBytes(document.getElementById('e_Ver_Pri_Com_Che').value)); jQuery(function(){jQuery('#e_priBS58CQrcode').qrcode(str2rstr_utf8(document.getElementById('e_priBS58C').value));}); if(document.getElementById('e_priBS58CQrcode').childNodes.length > 1){document.getElementById('e_priBS58CQrcode').childNodes[0].remove();}">Base58(Version+privKey+CompressedFlag+Checksum)</button>
-			<button onclick="document.getElementById('e_priBS58C').value = ''; document.getElementById('e_priBS58CQrcode').childNodes[0].remove();">Clear - 清空</button>
+			<button id="e_BTN_priBS58C" onclick="if(isHex(document.getElementById('e_Ver_Pri_Com_Che').value)==false){alert('The input value is not hex. - 输入值不是16进制.'); return false;} document.getElementById('e_priBS58C').value = Bitcoin.Base58.encode(Crypto.util.hexToBytes(document.getElementById('e_Ver_Pri_Com_Che').value)); document.getElementById('BTN_e_priBS58CQrcode').onclick();">Base58(Version+privKey+CompressedFlag+Checksum)</button>
+			<button onclick="document.getElementById('e_priBS58C').value = ''; deleteQrcode('e_priBS58CQrcode');">Clear - 清空</button>
 			<button onclick="document.getElementById('e_Ver_Pri_Com_Che').value = Crypto.util.bytesToHex(Bitcoin.Base58.decode(document.getElementById('e_priBS58C').value));">Inverse Calculation - 逆算</button>
-			<button onclick="jQuery(function(){jQuery('#e_priBS58CQrcode').qrcode(str2rstr_utf8(document.getElementById('e_priBS58C').value));}); if(document.getElementById('e_priBS58CQrcode').childNodes.length > 1){document.getElementById('e_priBS58CQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+			<button id="BTN_e_priBS58CQrcode" onclick="deleteQrcode('e_priBS58CQrcode'); generateQrcode(document.getElementById('e_priBS58C').value, 'e_priBS58CQrcode');">Generate QR code - 生成二维码</button><br/>
 			<textarea id="e_priBS58C" rows="2" spellcheck="false"></textarea><br/>
 			<div id="e_priBS58CQrcode"></div>
 		</div>
@@ -2166,8 +2185,8 @@
 		<p>public key: X coordinate (32 bytes)+Y coordinate (32 bytes).</p><br/>
 		<p>公钥：X坐标(32字节)+Y坐标(32字节)。</p><br/>
 		<button id="e_BTN_pubKey" onclick="if(document.getElementById('e_priKey').value == ''){alert('The private key is empty. - 私钥为空。'); return false;}  document.getElementById('e_BTN_Ver_Pri_Com').onclick(); document.getElementById('e_BTN_VerPriSHA256DB').onclick(); document.getElementById('e_BTN_Ver_Pri_Com_Che').onclick(); document.getElementById('e_BTN_priBS58C').onclick(); document.getElementById('e_pubKey').value = priToPub(document.getElementById('e_priBS58C').value).substr(2);">Select SECP256K1 elliptic curve to generate public key - 选取SECP256K1椭圆曲线生成公钥</button>
-		<button onclick="document.getElementById('e_pubKey').value = ''; document.getElementById('e_pubKeyQrcode').childNodes[0].remove();">Clear - 清空</button>
-		<button onclick="jQuery(function(){jQuery('#e_pubKeyQrcode').qrcode(str2rstr_utf8(document.getElementById('e_pubKey').value));}); if(document.getElementById('e_pubKeyQrcode').childNodes.length > 1){document.getElementById('e_pubKeyQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+		<button onclick="document.getElementById('e_pubKey').value = ''; deleteQrcode('e_pubKeyQrcode');">Clear - 清空</button>
+		<button id="BTN_e_pubKeyQrcode" onclick="deleteQrcode('e_pubKeyQrcode'); generateQrcode(document.getElementById('e_pubKey').value, 'e_pubKeyQrcode');">Generate QR code - 生成二维码</button><br/>
 		<textarea id="e_pubKey" rows="3" spellcheck="false"></textarea><br/>
 		<div id="e_pubKeyQrcode"></div>
 	</div>
@@ -2196,9 +2215,9 @@
 		<div class="h2">【CheckSum Address - 带校验和的地址】</div>
 		<p>Ethereum implicitly adds checksums by introducing uppercase letters to prevent accidentally entering incorrect addresses. The rule is: (1) First, treat the address as a string (excluding the starting '0x'), and calculate the Keccak value; (2) If the value of the i-th bit of the Keccak value is ≥ 8, then the i-th bit of the address is changed to uppercase letters.</p><br/>
 		<p>以太坊通过引入大写字母来隐含加入校验和，防止不小心输错地址。其规则是：(1)先将地址看成字符串(不包括开头的0x)，并计算Keccak值；(2)如果Keccak值的第i位的值≥8，那么地址的第i位改成大写字母。</p>
-		<button id="e_BTN_checksumAddr" onclick="if(document.getElementById('e_address').value==''){alert('The address is empty. - 地址为空。'); return false;} document.getElementById('e_checksumAddr').value = ETHAddrEncode(document.getElementById('e_address').value); jQuery(function(){jQuery('#e_checksumAddrQrcode').qrcode(str2rstr_utf8(document.getElementById('e_checksumAddr').value));}); if(document.getElementById('e_checksumAddrQrcode').childNodes.length > 1){document.getElementById('e_checksumAddrQrcode').childNodes[0].remove();}">ChecksumEncode(Address) - ChecksumEncode(地址)</button>
+		<button id="e_BTN_checksumAddr" onclick="if(document.getElementById('e_address').value==''){alert('The address is empty. - 地址为空。'); return false;} document.getElementById('e_checksumAddr').value = ETHAddrEncode(document.getElementById('e_address').value); document.getElementById('BTN_e_checksumAddrQrcode').onclick();">ChecksumEncode(Address) - ChecksumEncode(地址)</button>
 		<button onclick="document.getElementById('e_address').value = document.getElementById('e_checksumAddr').value.toLowerCase(); document.getElementById('addrKeccak256').value = keccak256(document.getElementById('e_address').value.substr(2)).toString('hex');">Inverse Calculation - 逆算</button>
-		<button onclick="jQuery(function(){jQuery('#e_checksumAddrQrcode').qrcode(str2rstr_utf8(document.getElementById('e_checksumAddr').value));}); if(document.getElementById('e_checksumAddrQrcode').childNodes.length > 1){document.getElementById('e_checksumAddrQrcode').childNodes[0].remove();}">Generate QR code - 生成二维码</button><br/>
+		<button id="BTN_e_checksumAddrQrcode" onclick="deleteQrcode('e_checksumAddrQrcode'); generateQrcode(document.getElementById('e_checksumAddr').value, 'e_checksumAddrQrcode');">Generate QR code - 生成二维码</button><br/>
 		<textarea id="e_checksumAddr" rows="2" spellcheck="false"></textarea><br/>
 		<div id="e_checksumAddrQrcode"></div>
 	</div>
@@ -2460,9 +2479,5 @@ var floatMod = (arg1, arg2) => {
     let intVal = floatMultiply(intNum, arg2);
     return floatSub( arg1,intVal );  12.4
 }	
-</script>       
-
-<script>
-!function(p){"use strict";!function(t){var s=window,e=document,i=p,c="".concat("https:"===e.location.protocol?"https://":"http://","sdk.51.la/js-sdk-pro.min.js"),n=e.createElement("script"),r=e.getElementsByTagName("script")[0];n.type="text/javascript",n.setAttribute("charset","UTF-8"),n.async=!0,n.src=c,n.id="LA_COLLECT",i.d=n;var o=function(){s.LA.ids.push(i)};s.LA?s.LA.ids&&o():(s.LA=p,s.LA.ids=[],o()),r.parentNode.insertBefore(n,r)}()}({id:"JyPPWiU67Pp2zEmI",ck:"JyPPWiU67Pp2zEmI",autoTrack:true,hashMode:true,screenRecord:true});
 </script>
 </html>
