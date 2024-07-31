@@ -47,7 +47,7 @@
 			var result = myObj["data"].find(function(item){return item.id === "bitcoin"});
 			var btcUsd = Math.round(result["rateUsd"] * 100) / 100;
 			result = myObj["data"].find(function(item){return item.id === "chinese-yuan-renminbi"});
-			var btcCny = Math.round(1 / result["rateUsd"] * btcUsd * 100) / 100;
+			var btcCny = Math.round(1 / result["rateUsd"] * btcUsd * 100) / 100;  //保留两位小数
 			document.getElementById('priceUsd').innerHTML = "Realtime Price(实时价格): <font style='font-weight:bold; color:red'>" + btcUsd + "$, " + btcCny + "¥</font>";
 		}
 	};
@@ -719,6 +719,7 @@
 		hash = Crypto.util.hexToBytes(hash).reverse();
 		hash = Crypto.util.bytesToHex(hash);
 		txJSON.hash = hash;
+		txJSON.hex_raw_length = raw.length;  //计算单位字节花费矿工费sats/vB时用到
 		return txJSON;
 	}
 
@@ -1620,6 +1621,28 @@
 			}
 		}
 	}
+	
+	//计算每字节花费的矿工费
+	function calFeepervB(txRaw, txSignedRaw){
+		var txRawObj = txParseRaw(txRaw);
+		var arr = txRawObj.txJSON.tx_in_value.split(" ");
+		var txInValue = 0;
+		for(var i = 0; i < arr.length; i++){
+			txInValue = floatAdd(txInValue, arr[i]);
+		}
+		txInValue = txInValue * 100000000;
+		
+		var txSignedRawObj = txParseRaw(txSignedRaw);
+		var tx_out_count = txSignedRawObj.txJSON.tx_out_count;
+		var txOutValue = 0;
+		for(var i = 0; i < tx_out_count; i++){
+			txOutValue = floatAdd(txOutValue, txSignedRawObj.txJSON.tx_out[i].value);
+		}
+		txOutValue = txOutValue * 100000000;
+		
+		var vBytes = Math.round((txInValue - txOutValue) / txSignedRawObj.txJSON.hex_raw_length * 100) / 100; //保留两位小数
+		return vBytes;
+	}
 </script>
 </head>
 <body>
@@ -2077,7 +2100,7 @@
 		</div>
 		<p id="txRAWSigned-open-btn" class="show"><button onclick="openContent('txRAWSigned-content', 'txRAWSigned-open-btn', 'txRAWSigned-close-btn')">More - 查看更多</button></p>
 		<p id="txRAWSigned-close-btn" class="hidden"><button onclick="closeContent('txRAWSigned-content', 'txRAWSigned-open-btn', 'txRAWSigned-close-btn')">Hide - 隐藏内容</button></p>
-		<button onclick="document.getElementById('txSignedRaw').value =txToSignedRaw(document.getElementById('txRaw').value, document.getElementById('txPriKey').value, document.getElementById('txScriptType').value); document.getElementById('BTN_txSignedRawQrcode').onclick();">Sign TX - 签名交易</button>
+		<button onclick="document.getElementById('txSignedRaw').value =txToSignedRaw(document.getElementById('txRaw').value, document.getElementById('txPriKey').value, document.getElementById('txScriptType').value); document.getElementById('BTN_txSignedRawQrcode').onclick(); document.getElementById('feeperByte').innerHTML = 'Fee(手续费): ' + calFeepervB(document.getElementById('txRaw').value, document.getElementById('txSignedRaw').value) + 'sats/vB';">Sign TX - 签名交易</button>
 		<button onclick="var myObj = txParseRaw(document.getElementById('txSignedRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse Hex to JSON - 解析Raw交易串成JSON格式</button>
 		<button id="BTN_txSignedRawQrcode" onclick="deleteQrcode('txSignedRawQrcode'); generateQrcode(document.getElementById('txSignedRaw').value, 'txSignedRawQrcode');">Generate QR code - 生成二维码</button>
 		<textarea id="txSignedRaw" rows="7" spellcheck="false"></textarea><br/>
