@@ -1605,7 +1605,7 @@
 	
 	//生成二维码
 	function generateQrcode(content, parentElement){
-		var arr = mySplit(content, 400);
+		var arr = mySplit(content, 250);
 		for(var i = 0; i < arr.length; i++){
 			jQuery(function(){jQuery("#" + parentElement).qrcode(str2rstr_utf8(arr[i]));});
 			document.getElementById(parentElement).appendChild(document.createElement("br"));
@@ -1640,8 +1640,10 @@
 		}
 		txOutValue = txOutValue * 100000000;
 		
-		var vBytes = Math.round((txInValue - txOutValue) / txSignedRawObj.txJSON.hex_raw_length * 100) / 100; //保留两位小数
-		return vBytes;
+		var txFee = txInValue - txOutValue;
+		var vBytes = txSignedRawObj.txJSON.hex_raw_length / 2;
+		var feepervB = Math.round(txFee / vBytes * 100) / 100; //保留两位小数
+		return feepervB;
 	}
 </script>
 </head>
