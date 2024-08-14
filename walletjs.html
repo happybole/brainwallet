@@ -719,7 +719,7 @@
 		hash = Crypto.util.hexToBytes(hash).reverse();
 		hash = Crypto.util.bytesToHex(hash);
 		txJSON.hash = hash;
-		txJSON.hex_raw_length = raw.length;  //计算单位字节花费矿工费sats/vB时用到
+		txJSON.hex_raw_length = raw.length;  //计算单位字节花费矿工费sat/vB时用到
 		return txJSON;
 	}
 
@@ -1641,7 +1641,7 @@
 		txOutValue = txOutValue * 100000000;
 		
 		var txFee = txInValue - txOutValue;
-		var vBytes = txSignedRawObj.txJSON.hex_raw_length / 2;
+		var vBytes = txSignedRawObj.txJSON.hex_raw_length / 2 + floatMultiply((txSignedRaw.length - txSignedRawObj.txJSON.hex_raw_length) / 2, 0.25);
 		var feepervB = Math.round(txFee / vBytes * 100) / 100; //保留两位小数
 		return feepervB;
 	}
@@ -2102,11 +2102,11 @@
 		</div>
 		<p id="txRAWSigned-open-btn" class="show"><button onclick="openContent('txRAWSigned-content', 'txRAWSigned-open-btn', 'txRAWSigned-close-btn')">More - 查看更多</button></p>
 		<p id="txRAWSigned-close-btn" class="hidden"><button onclick="closeContent('txRAWSigned-content', 'txRAWSigned-open-btn', 'txRAWSigned-close-btn')">Hide - 隐藏内容</button></p>
-		<button onclick="document.getElementById('txSignedRaw').value =txToSignedRaw(document.getElementById('txRaw').value, document.getElementById('txPriKey').value, document.getElementById('txScriptType').value); document.getElementById('BTN_txSignedRawQrcode').onclick(); document.getElementById('feeperByte').innerHTML = 'Fee(手续费): ' + calFeepervB(document.getElementById('txRaw').value, document.getElementById('txSignedRaw').value) + 'sats/vB';">Sign TX - 签名交易</button>
+		<button onclick="document.getElementById('txSignedRaw').value =txToSignedRaw(document.getElementById('txRaw').value, document.getElementById('txPriKey').value, document.getElementById('txScriptType').value); document.getElementById('BTN_txSignedRawQrcode').onclick(); document.getElementById('feeperByte').innerHTML = 'Fee(手续费): ' + calFeepervB(document.getElementById('txRaw').value, document.getElementById('txSignedRaw').value) + 'sat/vB';">Sign TX - 签名交易</button>
 		<button onclick="var myObj = txParseRaw(document.getElementById('txSignedRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse Hex to JSON - 解析Raw交易串成JSON格式</button>
 		<button id="BTN_txSignedRawQrcode" onclick="deleteQrcode('txSignedRawQrcode'); generateQrcode(document.getElementById('txSignedRaw').value, 'txSignedRawQrcode');">Generate QR code - 生成二维码</button>
 		<textarea id="txSignedRaw" rows="7" spellcheck="false"></textarea><br/>
-		<div id="feeperByte" style="font-size:13px">Fee(手续费): sats/vB</div>
+		<div id="feeperByte" style="font-size:13px">Fee(手续费): sat/vB</div>
 		<div id="txSignedRawQrcode"></div><br/>
 		
 		<div class="h2">【Broadcast TX - 广播交易】</div>
