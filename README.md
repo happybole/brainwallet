@@ -7,3 +7,4 @@ JS demonstrates the process of building and signing Bitcoin transactions, enabli
 This webpage code (right-click to view the source code) is very suitable for beginners to understand the basic principles of Bitcoin from a code level. Simply save this webpage to run it offline and use it as a brain wallet or cold wallet. It is recommended to use Chrome browser.
 
 Demo like this: https://startbitcoin.org/brainwallet/
+https://happybole.github.io/walletjs/
