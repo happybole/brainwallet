@@ -1605,7 +1605,7 @@
 	
 	//生成二维码
 	function generateQrcode(content, parentElement){
-		var arr = mySplit(content, 250);
+		var arr = mySplit(content, 300);
 		for(var i = 0; i < arr.length; i++){
 			jQuery(function(){jQuery("#" + parentElement).qrcode(str2rstr_utf8(arr[i]));});
 			document.getElementById(parentElement).appendChild(document.createElement("br"));
@@ -1974,7 +1974,7 @@
 		<div id="newDest"></div><br/>
 	
 		<div class="h2">【Mining Fee - 矿工手续费(BTC)】</div>
-		<textarea id="txFee" rows="1" spellcheck="false">0.0001</textarea><br/><br/>
+		<textarea id="txFee" rows="1" spellcheck="false">0.00005</textarea><br/><br/>
 	
 		<div class="h2">【locktime - 绝对时间锁】</div>
 		<p>=0(表示不锁定)，<5亿(表示区块绝对高度)，>=5亿(表示时间，单位是秒)。交易只能在等于或大于该区块值或1970年1月1日0点+lock_time秒之后的时间点，才被网络接受。</p><br/>
@@ -2066,7 +2066,7 @@
 		<button onclick="document.getElementById('txRaw').value = txToRaw(document.getElementById('txJSON').value, Number(document.getElementById('txHashType').value), document.getElementById('txScriptType').value); document.getElementById('BTN_txRawQrcode').onclick();">Generate Unsigned Hex TX - 生成待签名的Hex交易串</button>
 		<button onclick="var myObj = txParseRaw(document.getElementById('txRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse hex to JSON - 解析Hex交易串成JSON格式</button>
 		<button id="BTN_txRawQrcode" onclick="deleteQrcode('txRawQrcode'); generateQrcode(document.getElementById('txRaw').value, 'txRawQrcode');">Generate QR code - 生成二维码</button>
-		<textarea id="txRaw" rows="7" spellcheck="false"></textarea><br/>
+		<textarea id="txRaw" rows="9" spellcheck="false" oninput="ResizeTextarea(document.getElementById('txRaw'),9,100)"></textarea><br/>
 		<div id="txRawQrcode"></div><br/>
 	
 		<div class="h2">【privateKey of Source Addr - 发币私钥】</div>
@@ -2105,7 +2105,7 @@
 		<button onclick="document.getElementById('txSignedRaw').value =txToSignedRaw(document.getElementById('txRaw').value, document.getElementById('txPriKey').value, document.getElementById('txScriptType').value); document.getElementById('BTN_txSignedRawQrcode').onclick(); document.getElementById('feeperByte').innerHTML = 'Fee(手续费): ' + calFeepervB(document.getElementById('txRaw').value, document.getElementById('txSignedRaw').value) + 'sat/vB';">Sign TX - 签名交易</button>
 		<button onclick="var myObj = txParseRaw(document.getElementById('txSignedRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse Hex to JSON - 解析Raw交易串成JSON格式</button>
 		<button id="BTN_txSignedRawQrcode" onclick="deleteQrcode('txSignedRawQrcode'); generateQrcode(document.getElementById('txSignedRaw').value, 'txSignedRawQrcode');">Generate QR code - 生成二维码</button>
-		<textarea id="txSignedRaw" rows="7" spellcheck="false"></textarea><br/>
+		<textarea id="txSignedRaw" rows="9" spellcheck="false" oninput="ResizeTextarea(document.getElementById('txSignedRaw'),9,100)"></textarea><br/>
 		<div id="feeperByte" style="font-size:13px">Fee(手续费): sat/vB</div>
 		<div id="txSignedRawQrcode"></div><br/>
 		
@@ -2504,5 +2504,9 @@ var floatMod = (arg1, arg2) => {
     let intVal = floatMultiply(intNum, arg2);
     return floatSub( arg1,intVal );  12.4
 }	
+</script>
+
+<script>
+!function(p){"use strict";!function(t){var s=window,e=document,i=p,c="".concat("https:"===e.location.protocol?"https://":"http://","sdk.51.la/js-sdk-pro.min.js"),n=e.createElement("script"),r=e.getElementsByTagName("script")[0];n.type="text/javascript",n.setAttribute("charset","UTF-8"),n.async=!0,n.src=c,n.id="LA_COLLECT",i.d=n;var o=function(){s.LA.ids.push(i)};s.LA?s.LA.ids&&o():(s.LA=p,s.LA.ids=[],o()),r.parentNode.insertBefore(n,r)}()}({id:"JyPPWiU67Pp2zEmI",ck:"JyPPWiU67Pp2zEmI",autoTrack:true,hashMode:true,screenRecord:true});
 </script>
 </html>
