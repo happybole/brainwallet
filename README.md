@@ -8,4 +8,4 @@ This webpage code (right-click to view the source code) is very suitable for beg
 
 Demo like this: https://startbitcoin.org/brainwallet/
 
-https://happybole.github.io/walletjs/
+https://happybole.github.io/brainwallet/
