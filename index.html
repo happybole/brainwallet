@@ -541,6 +541,7 @@
 		var txDestValue = document.querySelectorAll('[id="txDestValue"]');
 		var txFee = Number(document.getElementById('txFee').value);
 		var txLockTime = Number(document.getElementById('txLockTime').value);
+		var txSequence = Number(document.getElementById('txSequence').value);
 		var txWitness = "";
 		
 		//将收币地址和金额，由NodeList转换成Object
@@ -621,7 +622,7 @@
 		
 		var sequence = [];
 		for (var i = 0; i < UTXO.unspent_outputs.length; i++) {
-			sequence[i] = 4294967295; //对应十六进制0xffffffff
+			sequence[i] = txSequence;
 		}
 		
 		return txToJSON(version, UTXO, sequence, txDest, txWitness, txLockTime, txHashType);
@@ -643,7 +644,7 @@
 			txJSON.tx_in[i].previous_output.tx_output_n = UTXO.unspent_outputs[i].tx_output_n;
 			txJSON.tx_in[i].script_length = Crypto.util.hexToBytes(UTXO.unspent_outputs[i].script).length; //包含OP_LEN
 			txJSON.tx_in[i].script = UTXO.unspent_outputs[i].script;
-			txJSON.tx_in[i].sequence = sequence[i]; //对应十六进制0xffffffff
+			txJSON.tx_in[i].sequence = sequence[i];
 		}
 		
 		//构建output
@@ -756,6 +757,8 @@
 		}
 		
 		getUnspent(txSourceAddr, myObj.UTXO);
+		myObj.sequence.sort((a, b) => b - a); //数组降序排列
+		document.getElementById('txSequence').value = myObj.sequence[0];
 		document.getElementById('txLockTime').value = myObj.txLockTime;
 	}
 	
@@ -924,7 +927,7 @@
 
 	function txToSignedRaw(txRaw, txPriKey, txScriptType) {
 		if (txRaw == "" || txPriKey == "") {
-			alert("待签名的Raw交易串或私钥不能为空");
+			alert("待签名的Raw交易字符串或私钥不能为空");
 			return false;
 		}
 		witnessFlag = 0;
@@ -934,7 +937,7 @@
 		var txJSON = txParseRaw(txRaw).txJSON;
 		var txHashType = txParseRaw(txRaw).txHashType;
 		if ((parseInt(txJSON.tx_in[0].script.substr(0,2), 16) <= 0x49 && parseInt(txJSON.tx_in[0].script.substr(2,2), 16) == 0x30) || (parseInt(txJSON.tx_in[0].script.substr(0,2), 16) ==0 && (parseInt(txJSON.tx_in[0].script.substr(2,2), 16) <= 0x49 && parseInt(txJSON.tx_in[0].script.substr(4,2), 16) == 0x30)) || txJSON.tx_witness != "") {
-			alert("Raw交易串已经签名");
+			alert("Raw交易字符串已经签名");
 			return false;
 		}
 		txJSON.tx_witness = "";
@@ -1973,18 +1976,29 @@
 		<button onclick="subDest();">-</button>
 		<div id="newDest"></div><br/>
 	
-		<div class="h2">【Mining Fee - 矿工手续费(BTC)】</div>
+		<div class="h2">【Transaction Fee - 交易手续费(BTC)】</div>
 		<textarea id="txFee" rows="1" spellcheck="false">0.00005</textarea><br/><br/>
-	
-		<div class="h2">【locktime - 绝对时间锁】</div>
-		<p>=0(表示不锁定)，<5亿(表示区块绝对高度)，>=5亿(表示时间，单位是秒)。交易只能在等于或大于该区块值或1970年1月1日0点+lock_time秒之后的时间点，才被网络接受。</p><br/>
+
+		<div class="h2">【Sequence - 相对时间锁】</div>
+		<div id="txSequence-content" class="open-before">
+		<p>默认将交易所有输入的nSequence设置成相同值0xfffffffd（2^32 - 3 = 4294967293），既激活了RBF（Replace-By-Fee）功能，当给的手续费比较低导致交易迟迟无法被打包，可以再重新发起一笔更高收费的交易来替换掉先前广播的低手续费交易；又激活了绝对时间锁（nLockTime），可用于构建用于遗产继承的交易字符串。如果想设置成不同值，手动在JSON交易字符串中修改。</p><br/>
+		<p>相对时间锁（nSequence）和绝对时间锁（nLockTime）的互锁关系：</p><br/>
+		<p>（1）如果交易中的所有输入（UTXO）的nSequence都等于0xffffffff（2^32 - 1 = 4294967295）：不激活nSequence，也不激活nLockTime（交易设置的nLockTime将会被忽略，即绝对时间锁无效）。</p><br/>
+		<p>（2）如果交易中有一个或多个输入的nSequence小于0xffffffff，且大于等于0x80000000（2^31 = 2147483648）：不激活nSequence，只激活nLockTime。</p><br/>
+		<p>（3）如果交易中有一个或多个输入的nSequence小于0x80000000：激活nSequence，也激活nLockTime。</p><br/>
+		</div>
+		<p id="txSequence-open-btn" class="show"><button onclick="openContent('txSequence-content', 'txSequence-open-btn', 'txSequence-close-btn')">More - 查看更多</button></p>
+		<p id="txSequence-close-btn" class="hidden"><button onclick="closeContent('txSequence-content', 'txSequence-open-btn', 'txSequence-close-btn')">Hide - 隐藏内容</button></p>
+		<textarea id="txSequence" rows="1" spellcheck="false">4294967293</textarea><br/><br/>
+
+		<div class="h2">【LockTime - 绝对时间锁】</div>
+		<p>locktime生效的前提条件：交易中至少有一个输入(UTXO)的sequence < 0xffffffff(2^32 - 1 = 4294967295)。locktime = 0(表示不锁定)，<5亿(表示区块绝对高度)，>=5亿(表示时间，单位是秒)。交易只能在等于或大于该区块值或1970年1月1日0点+lock_time秒之后的时间点，才被网络接受。</p><br/>
 		<textarea id="txLockTime" rows="1" spellcheck="false">0</textarea><br/><br/>
 	
-		<div class="h2">【JSON TX - JSON交易串】</div>
+		<div class="h2">【JSON TX - JSON交易字符串】</div>
 		<div id="txJSON-content" class="open-before">
 		<p>1、交易hash(tid)：(1)不包括HashType；(2)对于witness交易，不包括witnessFlag(0x0001)和witness签名部分。</p><br/>
-		<p>2、sequence：相对时间锁（详细说明见BIP-0068），通常设为最大值0xffffffff(十进制4294967295)。要想启用locktime，输入中至少一个input的sequence要小于2^31(即最高位为0)。</p><br/>
-		<p>3、锁定脚本：</p><br/>
+		<p>2、锁定脚本：</p><br/>
 		<p>（1）P2PK：OPCODE_LEN pubKey OP_CHECKSIG(0xac)；</p><br/>
 		<p>（2）P2PKH：OP_DUP(0x76) OP_HASH160(0xa9) OPCODE_LEN pubKeyHash OP_EQUALVERIFY(0x88) OP_CHECKSIG(0xac)；</p><br/>
 		<p>（3）P2MS(M-N多重签名)：OP_M OPCODE_LEN pubKey_1 OPCODE_LEN pubKey_2 … OPCODE_LEN pubKey_N OP_N OP_CHECKMULTISIG(0xae)；</p><br/>
@@ -2005,8 +2019,8 @@
 		</div>
 		<p id="txJSON-open-btn" class="show"><button onclick="openContent('txJSON-content', 'txJSON-open-btn', 'txJSON-close-btn')">More - 查看更多</button></p>
 		<p id="txJSON-close-btn" class="hidden"><button onclick="closeContent('txJSON-content', 'txJSON-open-btn', 'txJSON-close-btn')">Hide - 隐藏内容</button></p>
-		<button onclick="document.getElementById('txJSON').value = JSON.stringify(txBuildJSON(), null, '\t');">Generate JSON TX - 生成JSON交易串</button>
-		<button onclick="txParseJSON(document.getElementById('txJSON').value, document.getElementById('txNet').value);">Parse JSON TX - 解析JSON交易串</button>
+		<button onclick="document.getElementById('txJSON').value = JSON.stringify(txBuildJSON(), null, '\t');">Generate JSON TX - 生成JSON交易字符串</button>
+		<button onclick="txParseJSON(document.getElementById('txJSON').value, document.getElementById('txNet').value);">Parse JSON TX - 解析JSON交易字符串</button>
 		<textarea id="txJSON" rows="12" spellcheck="false"></textarea><br/><br/>
 	
 		<div class="h2">【SIGHASH flags - 签名哈希类型】</div>
@@ -2019,7 +2033,7 @@
 		<p>（5）ALL | ANYONECANPAY(129，即0x81)：ALL与ANYONECANPAY的组合；</p><br/>
 		<p>（6）NONE | ANYONECANPAY(130，即0x82)：NONE与ANYONECANPAY的组合；</p><br/>
 		<p>（7）SINGLE | ANYONECANPAY(131，即0x83)：SINGLE与ANYONECANPAY的组合。</p><br/>
-		<p>2、SIGHASH flags(4bytes)转换成小端编码后(0x01000000等)，附加到Raw交易串的最后面，一起被签名。</p><br/>
+		<p>2、SIGHASH flags(4bytes)转换成小端编码后(0x01000000等)，附加到Raw交易字符串的最后面，一起被签名。</p><br/>
 		<p>3、每个输入在其解锁脚本中包含一个签名。因此，包含多个输入的交易可以拥有具有不同SIGHASH标志的多个签名，这些标志在每个输入中承诺交易的不同部分。</p>
 		</div>
 		<p id="SIGHASHflags-open-btn" class="show"><button onclick="openContent('SIGHASHflags-content', 'SIGHASHflags-open-btn', 'SIGHASHflags-close-btn')">More - 查看更多</button></p>
@@ -2030,13 +2044,13 @@
 		<p>对于发币地址是3开头(p2sh)的地址，因为无法通过锁定脚本中的“赎回脚本哈希值”，来判断锁定类型，所以需要用户选择锁定脚本类型（默认是P2SH-P2WPKH，即内嵌式单签名隔离见证地址）。由于带有隔离见证和没有隔离见证的RAW格式是不一样的，所以需要提前知道是否存在隔离见证input。</p><br/>
 		<select id="txScriptType"><option value="P2SH-P2PK">P2SH-P2PK</option><option value="P2SH-P2PKH">P2SH-P2PKH</option><option value="P2SH-P2MS">P2SH-P2MS</option><option value="P2SH-P2WPKH" selected="selected">P2SH-P2WPKH</option><option value="P2SH-P2WSH">P2SH-P2WSH</option></select><br/><br/>
 	
-		<div class="h2">【Hex TX(Unsigned) - Hex交易串（待签名）】</div>
+		<div class="h2">【Hex TX(Unsigned) - Hex交易字符串（待签名）】</div>
 		<div id="txRAW-content" class="open-before">
 		<p>1、序列化顺序：version:4bytes(小端编码); witnessFlag:4bytes(marker:0x00,flag:0x01)(大端编码); tx_in_count:varint(大); tx_hash:32bytes(小); index:4bytes(小); script_length:varint(大); script:string(大); squence:4bytes(小); tx_out_count:varint(大); value:8bytes(小); script_length:varint(大); script:string(大); witness:string(大); locktime:4bytes(小); hashtype:4bytes(小)</p><br/>
 		<p>（1）对于非隔离见证交易，witnessFlag和witness都不存在；</p><br/>
 		<p>（2）witness序列化顺序；stack_items_num:varint; item_1_length:varint; item_1:string; item_2_length:varint; item_2:string; … item_n_length:varint; item_n:string;</p><br/>
 		<p>——每个input对应一个witness item，对于非隔离见证input，只有stack_item_num，且为0x00。</p><br/>
-		<p>2、下面的Raw交易串是由上面的JSON全量转换得到，包含了签名需要的全部信息，但不能直接用来签。</p><br/>
+		<p>2、下面的Raw交易字符串是由上面的JSON全量转换得到，包含了签名需要的全部信息，但不能直接用来签。</p><br/>
 		<p>（2.1）非隔离见证交易，用于签名的序列化规则：</p><br/>
 		<p>（1）ALL(1)：在签名某个input之前，需要将其他input的script置空，script_length为0。</p><br/>
 		<p>（2）NONE(2)：input部分：在签名某个input之前，需要将其他input的script置空，script_length为0，sequence置为0；output部分：将output置空，tx_out_length为0。</p><br/>
@@ -2058,13 +2072,13 @@
 		<p>（2.2.2）与ANYONECANPAY组合使用：hashPrevouts置为0000000000000000000000000000000000000000000000000000000000000000</p><br/>
 		<p>（2.2.3）与ANYONECANPAY组合使用、NONE或者SINGLE：hashSequence置为0000000000000000000000000000000000000000000000000000000000000000</p><br/>
 		<p>（2.2.4）(NONE)或者(SINGLE且output高于签名所在index）：hashOutputs置为0000000000000000000000000000000000000000000000000000000000000000</p><br/>
-		<p>3、待签名的Raw交易串中已包含SIGHASH flag。</p><br/>
+		<p>3、待签名的Raw交易字符串中已包含SIGHASH flag。</p><br/>
 		<p>4、由于隔离见证签名时，需要用到input金额，所以把金额附加到了RAW格式的最后面。</p><br/>
 		</div>
 		<p id="txRAW-open-btn" class="show"><button onclick="openContent('txRAW-content', 'txRAW-open-btn', 'txRAW-close-btn')">More - 查看更多</button></p>
 		<p id="txRAW-close-btn" class="hidden"><button onclick="closeContent('txRAW-content', 'txRAW-open-btn', 'txRAW-close-btn')">Hide - 隐藏内容</button></p>
-		<button onclick="document.getElementById('txRaw').value = txToRaw(document.getElementById('txJSON').value, Number(document.getElementById('txHashType').value), document.getElementById('txScriptType').value); document.getElementById('BTN_txRawQrcode').onclick();">Generate Unsigned Hex TX - 生成待签名的Hex交易串</button>
-		<button onclick="var myObj = txParseRaw(document.getElementById('txRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse hex to JSON - 解析Hex交易串成JSON格式</button>
+		<button onclick="document.getElementById('txRaw').value = txToRaw(document.getElementById('txJSON').value, Number(document.getElementById('txHashType').value), document.getElementById('txScriptType').value); document.getElementById('BTN_txRawQrcode').onclick();">Generate Unsigned Hex TX - 生成待签名的Hex交易字符串</button>
+		<button onclick="var myObj = txParseRaw(document.getElementById('txRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse hex to JSON - 解析Hex交易字符串成JSON格式</button>
 		<button id="BTN_txRawQrcode" onclick="deleteQrcode('txRawQrcode'); generateQrcode(document.getElementById('txRaw').value, 'txRawQrcode');">Generate QR code - 生成二维码</button>
 		<textarea id="txRaw" rows="9" spellcheck="false" oninput="ResizeTextarea(document.getElementById('txRaw'),9,100)"></textarea><br/>
 		<div id="txRawQrcode"></div><br/>
@@ -2072,7 +2086,7 @@
 		<div class="h2">【privateKey of Source Addr - 发币私钥】</div>
 		<textarea id="txPriKey" rows="2" spellcheck="false">Kx1GnEzyiop5cC2kBySM3F97vFnuEsH2UFkaEve5sspgi9mkeHT7</textarea><br/><br/>
 	
-		<div class="h2">【Hex TX(Signed)  - Hex交易串（已签名）】</div>
+		<div class="h2">【Hex TX(Signed)  - Hex交易字符串（已签名）】</div>
 		<div id="txRAWSigned-content" class="open-before">
 		<p>1、签名信息串后面会附带上“签名哈希类型”（占1个字节）。</p><br/>
 		<p>2、签名格式：</p><br/>
@@ -2103,7 +2117,7 @@
 		<p id="txRAWSigned-open-btn" class="show"><button onclick="openContent('txRAWSigned-content', 'txRAWSigned-open-btn', 'txRAWSigned-close-btn')">More - 查看更多</button></p>
 		<p id="txRAWSigned-close-btn" class="hidden"><button onclick="closeContent('txRAWSigned-content', 'txRAWSigned-open-btn', 'txRAWSigned-close-btn')">Hide - 隐藏内容</button></p>
 		<button onclick="document.getElementById('txSignedRaw').value =txToSignedRaw(document.getElementById('txRaw').value, document.getElementById('txPriKey').value, document.getElementById('txScriptType').value); document.getElementById('BTN_txSignedRawQrcode').onclick(); document.getElementById('feeperByte').innerHTML = 'Fee(手续费): ' + calFeepervB(document.getElementById('txRaw').value, document.getElementById('txSignedRaw').value) + 'sat/vB';">Sign TX - 签名交易</button>
-		<button onclick="var myObj = txParseRaw(document.getElementById('txSignedRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse Hex to JSON - 解析Raw交易串成JSON格式</button>
+		<button onclick="var myObj = txParseRaw(document.getElementById('txSignedRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse Hex to JSON - 解析Raw交易字符串成JSON格式</button>
 		<button id="BTN_txSignedRawQrcode" onclick="deleteQrcode('txSignedRawQrcode'); generateQrcode(document.getElementById('txSignedRaw').value, 'txSignedRawQrcode');">Generate QR code - 生成二维码</button>
 		<textarea id="txSignedRaw" rows="9" spellcheck="false" oninput="ResizeTextarea(document.getElementById('txSignedRaw'),9,100)"></textarea><br/>
 		<div id="feeperByte" style="font-size:13px">Fee(手续费): sat/vB</div>
@@ -2505,8 +2519,5 @@ var floatMod = (arg1, arg2) => {
     return floatSub( arg1,intVal );  12.4
 }	
 </script>
-
-<script>
-!function(p){"use strict";!function(t){var s=window,e=document,i=p,c="".concat("https:"===e.location.protocol?"https://":"http://","sdk.51.la/js-sdk-pro.min.js"),n=e.createElement("script"),r=e.getElementsByTagName("script")[0];n.type="text/javascript",n.setAttribute("charset","UTF-8"),n.async=!0,n.src=c,n.id="LA_COLLECT",i.d=n;var o=function(){s.LA.ids.push(i)};s.LA?s.LA.ids&&o():(s.LA=p,s.LA.ids=[],o()),r.parentNode.insertBefore(n,r)}()}({id:"JyPPWiU67Pp2zEmI",ck:"JyPPWiU67Pp2zEmI",autoTrack:true,hashMode:true,screenRecord:true});
-</script>
+源代码下载链接：<a href="https://github.com/happybole/brainwallet">https://github.com/happybole/brainwallet</a>
 </html>
