@@ -2083,7 +2083,8 @@
 		<textarea id="txRaw" rows="9" spellcheck="false" oninput="ResizeTextarea(document.getElementById('txRaw'),9,100)"></textarea><br/>
 		<div id="txRawQrcode"></div><br/>
 	
-		<div class="h2">【privateKey of Source Addr - 发币私钥】</div>
+		<div class="h2">【Private Key Corresponding To Source Address - 发币地址对应的私钥】</div>
+		<p>The default private key can be used to simulate signatures to confirm whether the transaction fee is reasonable. - 默认私钥可用于模拟签名，来确认手续费是否合理。</p>
 		<textarea id="txPriKey" rows="2" spellcheck="false">Kx1GnEzyiop5cC2kBySM3F97vFnuEsH2UFkaEve5sspgi9mkeHT7</textarea><br/><br/>
 	
 		<div class="h2">【Hex TX(Signed)  - Hex交易字符串（已签名）】</div>
@@ -2120,7 +2121,8 @@
 		<button onclick="var myObj = txParseRaw(document.getElementById('txSignedRaw').value); document.getElementById('txJSON').value = JSON.stringify(myObj.txJSON, null, '\t'); document.getElementById('txHashType').value = myObj.txHashType;">Parse Hex to JSON - 解析Raw交易字符串成JSON格式</button>
 		<button id="BTN_txSignedRawQrcode" onclick="deleteQrcode('txSignedRawQrcode'); generateQrcode(document.getElementById('txSignedRaw').value, 'txSignedRawQrcode');">Generate QR code - 生成二维码</button>
 		<textarea id="txSignedRaw" rows="9" spellcheck="false" oninput="ResizeTextarea(document.getElementById('txSignedRaw'),9,100)"></textarea><br/>
-		<div id="feeperByte" style="font-size:13px">Fee(手续费): sat/vB</div>
+		<p id="feeperByte">Fee(手续费): sat/vB</p><br/>
+		<p>合理手续费查询：<a href="https://bitcoinfees.net" target="_blank">https://bitcoinfees.net</a></p><br/>
 		<div id="txSignedRawQrcode"></div><br/>
 		
 		<div class="h2">【Broadcast TX - 广播交易】</div>
@@ -2519,7 +2521,7 @@ var floatMod = (arg1, arg2) => {
     return floatSub( arg1,intVal );  12.4
 }	
 </script>
-源代码下载链接：<a href="https://github.com/happybole/brainwallet">https://github.com/happybole/brainwallet</a>
+<p>源代码下载链接：<a href="https://github.com/happybole/brainwallet" target="_blank">https://github.com/happybole/brainwallet</a></p>
 <script>
 !function(p){"use strict";!function(t){var s=window,e=document,i=p,c="".concat("https:"===e.location.protocol?"https://":"http://","sdk.51.la/js-sdk-pro.min.js"),n=e.createElement("script"),r=e.getElementsByTagName("script")[0];n.type="text/javascript",n.setAttribute("charset","UTF-8"),n.async=!0,n.src=c,n.id="LA_COLLECT",i.d=n;var o=function(){s.LA.ids.push(i)};s.LA?s.LA.ids&&o():(s.LA=p,s.LA.ids=[],o()),r.parentNode.insertBefore(n,r)}()}({id:"JyPPWiU67Pp2zEmI",ck:"JyPPWiU67Pp2zEmI",autoTrack:true,hashMode:true,screenRecord:true});
 </script>
