@@ -2021,7 +2021,7 @@
 		<p id="txJSON-close-btn" class="hidden"><button onclick="closeContent('txJSON-content', 'txJSON-open-btn', 'txJSON-close-btn')">Hide - 隐藏内容</button></p>
 		<button onclick="document.getElementById('txJSON').value = JSON.stringify(txBuildJSON(), null, '\t');">Generate JSON TX - 生成JSON交易字符串</button>
 		<button onclick="txParseJSON(document.getElementById('txJSON').value, document.getElementById('txNet').value);">Parse JSON TX - 解析JSON交易字符串</button>
-		<textarea id="txJSON" rows="12" spellcheck="false"></textarea><br/><br/>
+		<textarea id="txJSON" rows="15" spellcheck="false"></textarea><br/><br/>
 	
 		<div class="h2">【SIGHASH flags - 签名哈希类型】</div>
 		<div id="SIGHASHflags-content" class="open-before">
