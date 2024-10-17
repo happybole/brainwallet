@@ -568,7 +568,7 @@
 				return false;
 			}
 			if (isAddr(txDestAddr[i].value) == false) {
-				alert("收币地址校验失败");
+				alert("Verification of receiving address failed - 收币地址校验失败");
 				return false;
 			}
 
@@ -1548,7 +1548,10 @@
 	
 	//判读地址是否能通过校验
 	function isAddr(addr) {
-		if (addrType(addr) == "P2WPKH" || addrType(addr) == "P2WSH") {
+		if (addrType(addr) == "NONE") {
+			return false;
+		}
+		else if (addrType(addr) == "P2WPKH" || addrType(addr) == "P2WSH") {
 			try {
 				getLibraryFromEncoding('bech32').decode(addr);
 			} catch(err) {
@@ -1587,12 +1590,16 @@
 		}
 		str = "bc1BC1tb1TB1";  //bech32地址不区分大小写，但必须要么全都大写或要么全都小写
 		if (str.indexOf(addr.substr(0,3)) != -1) {
-			var words = getLibraryFromEncoding('bech32').decode(addr).words; 
-			var hexAddr = Crypto.util.bytesToHex(fromWords(words.slice(1,words.length)));
-			if (hexAddr.length == 40) {
-				return "P2WPKH";
+			try {
+				var words = getLibraryFromEncoding('bech32').decode(addr).words; 
+				var hexAddr = Crypto.util.bytesToHex(fromWords(words.slice(1,words.length)));
+				if (hexAddr.length == 40) {
+					return "P2WPKH";
+				}
+				return "P2WSH";
+			} catch(err) {
+				return "NONE";
 			}
-			return "P2WSH";
 		}
 	}
 	
