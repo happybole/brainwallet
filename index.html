@@ -1671,8 +1671,8 @@
 <div class="brain" style="margin-bottom:10px">
 	<!--Source - 源-->
 	<div class="h2">【Source - 源】</div>
-	<p>The brain regulations must include hash values and require replacement or cropping modifications to the hash values. For example, it can be set as: BrainPassword1+X(SHA256(BrainPassword2))+Y(SHA256(SHA256(BrainPassword3))+… Among them, X() and Y() are modifications to the hash value.</p><br/>
-	<p>脑规则中必须包括哈希值，且需要对哈希值进行替换或裁剪修改。例如可以设置成：脑口令1+X(SHA256(脑口令2))+Y(SHA256(SHA256(脑口令3)))+...，其中X()、Y()即对哈希值的修改。</p><br/>
+	<p>The brain regulations must include hash values and require replacement or cropping modifications to the hash values. For example, it can be set as: SHA256(SHA256(index)+X(SHA512(I))+Y(RIPEMD160(Love))+Z(Keccak256(Bitcoin)))+...) Among them, X(), Y() and Z() are modifications to the hash value.</p><br/>
+	<p>脑规则中必须包括哈希值，且需要对哈希值进行替换或裁剪修改。例如可以设置成：SHA256(SHA256(序号)+X(SHA512(I))+Y(RIPEMD160(Love)))+Z(Keccak256(Bitcoin))+...)，其中X()、Y()即对哈希值的修改。</p><br/>
 	<button onclick="document.getElementById('source').value = ''; deleteQrcode('sourceQrcode');">Clear - 清空</button>
 	<button id="BTN_sourceQrcode" onclick="deleteQrcode('sourceQrcode'); generateQrcode(document.getElementById('source').value, 'sourceQrcode');">Generate QR code - 生成二维码</button><br/>
 	<textarea id="source" rows="3" spellcheck="false" oninput="ResizeTextarea(document.getElementById('source'),3,100)"></textarea><br/>
