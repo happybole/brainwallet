@@ -638,7 +638,7 @@
 				var pubKey = addr;
 				var script = pubKey + " " + "OP_CHECKSIG";
 				txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
-				txJSON.tx_out[i].p2pk_script = script;
+				txJSON.tx_out[i].return_script = script;
 			}
 			if (addrType(addr) == "P2PKH") {
 				var hexAddr = Crypto.util.bytesToHex(Bitcoin.Base58.decode(addr)).substr(2,40);
@@ -647,21 +647,8 @@
 				txJSON.tx_out[i].p2pkh_script = script;
 			}
 			if (addrType(addr) == "P2MS") {
-				var f = Crypto.util.hexToBytes(addr);
-				var op_m = findKey(Bitcoin.Opcode.map, f.shift());
-				var op_n = findKey(Bitcoin.Opcode.map, f[f.length - 2]);
-  			function findKey (obj, value, compare = (a, b) => a === b) {
-					return Object.keys(obj).find(k => compare(obj[k], value))
-				}
-				var script = op_m + " ";
-				for (i = 0; i < op_n.substr(3); i++) { //substr(start,length)中的length（可选），如果省略了该参数，那么返回从 stringObject 的开始位置到结尾的字串。
-					 var len = readInt(f, 1);
-					 p = Crypto.util.bytesToHex(readBuffer(f, len));
-					 script = script + p + " ";
-				}
-				script = script + op_n + " " + "OP_CHECKMULTISIG";
-				txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
-				txJSON.tx_out[i].p2pkh_script = script;
+				txJSON.tx_out[i].script_length = scriptToBytes(addr).buffer.length; //包含OP_LEN
+				txJSON.tx_out[i].p2pkh_script = addr;
 			}
 			if (addrType(addr) == "P2SH") {
 				var hexAddr = Crypto.util.bytesToHex(Bitcoin.Base58.decode(addr)).substr(2,40);
@@ -675,6 +662,11 @@
 				var script = "0" + " " + hexAddr;
 				txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
 				txJSON.tx_out[i].p2wpkh_v0_script = script;
+			}
+			if (addrType(addr) == "OP_RETURN") {
+				var script = addr;
+				txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
+				txJSON.tx_out[i].return_script = script;
 			}
 		}
 		
@@ -866,14 +858,17 @@
 		if (witnessFlag == 1 && f.length !== 4 && f.length !== 8 && f.length !== 8 + 8 * tx_in_count) {
 			txWitness = readWitness(f, tx_in_count);
 			//通过SigScript无法读取到的源地址从witness来读取
-			w = Crypto.util.hexToBytes(txWitness);
-			w.unshift(0x77); //插入从witness读取源地址的标志位（0x77是w的ASCII码）
-			w = Bitcoin.Util.numToVarInt(w.length).concat(w); //readAddr(f, txNet)函数中，输入的f的第一个元素是脚本长度，所以需要增加witness长度，由于witness长度可能超过1个字节，需要用varint格式
-			var txSourceAddr_witness = [];
-			txSourceAddr_witness = readAddr(w, txNet);			
-			for (var i = 0; i < txSourceAddr.length; i++) {
-				if (txSourceAddr[i] == "") {
-					txSourceAddr[i] = txSourceAddr_witness[i]
+			//UTXO.unspent_outputs[0].tx_hash_big_endian != "0000000000000000000000000000000000000000000000000000000000000000"用来排除coinbase交易
+			if (UTXO.unspent_outputs[0].tx_hash_big_endian != "0000000000000000000000000000000000000000000000000000000000000000") {
+				w = Crypto.util.hexToBytes(txWitness);
+				w.unshift(0x77); //插入从witness读取源地址的标志位（0x77是w的ASCII码）
+				w = Bitcoin.Util.numToVarInt(w.length).concat(w); //readAddr(f, txNet)函数中，输入的f的第一个元素是脚本长度，所以需要增加witness长度，由于witness长度可能超过1个字节，需要用varint格式
+				var txSourceAddr_witness = [];
+				txSourceAddr_witness = readAddr(w, txNet);			
+				for (var i = 0; i < txSourceAddr.length; i++) {
+					if (txSourceAddr[i] == "") {
+						txSourceAddr[i] = txSourceAddr_witness[i]
+					}
 				}
 			}
 		}
@@ -1263,11 +1258,22 @@
 		}
 		//签名前：p2ms
 		else if (op >= 0x51 && op <= 0x60 && f[s_len - 2] == 0xae) { //最少要提供1个签名（0x51）
-			var p2ms = [];
-			p2ms.push(op);
-			p2ms = p2ms.concat(f.slice(0, s_len - 1));  //暂不支持多重签名
-			a = Crypto.util.bytesToHex(p2ms);
-			for (var i = 0; i < s_len - 1; i++) f.shift();			
+			f.unshift(op);
+			var op_m = findKey(Bitcoin.Opcode.map, f.shift());
+			var op_n = findKey(Bitcoin.Opcode.map, f[s_len - 3]);
+  		function findKey (obj, value, compare = (a, b) => a === b) {
+				return Object.keys(obj).find(k => compare(obj[k], value))
+			}
+			var script = op_m + " ";
+			for ( var i = 0; i < op_n.substr(3); i++) { //substr(start,length)中的length（可选），如果省略了该参数，那么返回从 stringObject 的开始位置到结尾的字串。
+				 var len = readInt(f, 1);
+				 p = Crypto.util.bytesToHex(readBuffer(f, len));
+				 script = script + p + " ";
+			}
+			script = script + op_n + " " + "OP_CHECKMULTISIG";
+			f.shift(); //删除OP_N
+			f.shift(); //删除OP_CHECKMULTISIG
+			a = script;
 		}
 		//签名前：p2sh
 		else if (op == 0xa9) {
@@ -1286,7 +1292,7 @@
 			for (var i = 0; i < a_len + 1; i++) f.shift();
 		}
 		//签名前：p2wpkh或p2wsh
-		else if(op == 0x00 && (f[0] == 0x14 || f[0] == 0x20)) {
+		else if (op == 0x00 && (f[0] == 0x14 || f[0] == 0x20)) {
 			var ver = "bc";
 			if (txNet != "mainnet") {
 				ver = "tb";
@@ -1299,12 +1305,12 @@
 			for (var i = 0; i < a_len; i++) f.shift();
 		}
 		//签名后：p2pk
-		else if (op <= 0x49 && f[0] == 0x30 && op == s_len - 1) {
+		else if (op >= 0x47 && op <= 0x49 && f[0] == 0x30 && op == s_len - 1) { //签名的长度介入0x47与0x49之间
 			a = ""; //签名后的p2pk脚本中，只有签名，无法从签名脚本中解析出公钥
 			for (var i = 0; i < op; i++) f.shift();			
 		}
 		//签名后：p2pkh
-		else if (op <= 0x49 && f[0] == 0x30 && (f[op] == 0x41 || f[op] == 0x21)) {
+		else if (op >= 0x47 && op <= 0x49 && f[0] == 0x30 && (f[op] == 0x41 || f[op] == 0x21)) {
 			var ver = "00";
 			if (txNet != "mainnet") {
 				ver = "6f";
@@ -1320,8 +1326,13 @@
 			a = Bitcoin.Base58.encode(Crypto.util.hexToBytes(a));
 			for (var i = 0; i < p_len; i++) f.shift();	
 		}
+		//签名后：p2ms
+		else if (op == 0x00 && f[0] >= 0x47 && f[0] <= 0x49){
+			a = "P2MS";
+			for (var i = 0; i < s_len - 1; i++) f.shift();	
+		}
 		//签名后：p2sh-p2pk
-		else if (op <= 0x49 && f[0] == 0x30 && (f[op] == 0x43 || f[op] == 0x23)) {
+		else if (op >= 0x47 && op <= 0x49 && f[0] == 0x30 && (f[op] == 0x43 || f[op] == 0x23)) {
 			var ver = "05";
 			if (txNet != "mainnet") {
 				ver = "c4";
@@ -1338,7 +1349,7 @@
 			for (var i = 0; i < r_len; i++) f.shift();		
 		}
 		//签名后：p2sh-p2pkh
-		else if (op <= 0x49 && f[0] == 0x30 && (f[op] == 0x41 || f[op] == 0x21) && f[s_len - 2] == 0xac) {
+		else if (op >= 0x47 && op <= 0x49 && f[0] == 0x30 && (f[op] == 0x41 || f[op] == 0x21) && f[s_len - 2] == 0xac) {
 			var ver = "05";
 			if (txNet != "mainnet") {
 				ver = "c4";
@@ -1454,6 +1465,15 @@
 				}
 				i++;
 			}
+		}
+		//OP_RETURN
+		else if (op == 0x6a) {
+			d_len = readVarInt(f);
+			if (d_len == 0x4c) { //OP_PUSHDATA1，OP_RETURN provided the total scriptPubKey length is at most 83 bytes.
+				d_len = readVarInt(f);
+			}
+			a = "OP_RETURN" + " " + Crypto.util.bytesToHex(f.slice(0, d_len));
+			for (var i = 0; i < d_len; i++) f.shift();
 		}
 		else {
 			a = "";
@@ -1591,8 +1611,8 @@
 		if (str.indexOf(addr.substr(0,1)) != -1) {
 			return "P2PKH";
 		}
-		str = "5";
-		if ((str.indexOf(addr.substr(0,1)) != -1) || str.indexOf(addr.substr(0,2)) == "60") {
+		str = "O";
+		if ((str.indexOf(addr.substr(0,1)) != -1)) {
 			return "P2MS";
 		}
 		str = "32";
@@ -1611,6 +1631,9 @@
 			} catch(err) {
 				return "NONE";
 			}
+		}
+		if (addr.substr(0,9) == "OP_RETURN") {
+			return "OP_RETURN";
 		}
 	}
 	
@@ -1971,7 +1994,7 @@
 		<select id="txNet"><option value="mainnet" selected="selected">mainnet</option><option value="testnet">testnet</option></select><br/><br/>
 	
 		<div class="h2">【Source Addr - 发币地址】</div>
-		<textarea id="txSourceAddr" rows="1" spellcheck="false" oninput="getBalance(document.getElementById('txSourceAddr').value); getUnspent(document.getElementById('txSourceAddr').value); ResizeTextarea(document.getElementById('txSourceAddr'),1,2);">12c6DSiU4Rq3P4ZxziKxzrL5LmMBrzjrJX</textarea><!--12c6DSiU4Rq3P4ZxziKxzrL5LmMBrzjrJX-->
+		<textarea id="txSourceAddr" rows="1" spellcheck="false" oninput="getBalance(document.getElementById('txSourceAddr').value); getUnspent(document.getElementById('txSourceAddr').value); ResizeTextarea(document.getElementById('txSourceAddr'),1,2);">12c6DSiU4Rq3P4ZxziKxzrL5LmMBrzjrJX</textarea>
 		<p>Balance Source - 余额来源</p>
 		<textarea id="txBalURL" rows="1" spellcheck="false" oninput="getBalance(document.getElementById('txSourceAddr').value);">https://blockchain.info/balance?active=</textarea>
 		<p>Balance - 余额(BTC)</p>
