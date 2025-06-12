@@ -22,6 +22,37 @@
 </style>
 
 <script type="text/javascript">
+/* 时间戳转换为时间 */
+/*
+function  timestampToTime(timestamp) {
+timestamp = timestamp ? timestamp : null;
+let date = new Date(timestamp);//时间戳为10位需*1000，时间戳为13位的话不需乘1000
+let Y = date.getFullYear() + '-';
+let M = (date.getMonth() + 1 < 10 ? '0' + (date.getMonth() + 1) : date.getMonth() + 1) + '-';
+let D = (date.getDate() < 10 ? '0' + date.getDate() : date.getDate()) + ' ';
+let h = (date.getHours() < 10 ? '0' + date.getHours() : date.getHours()) + ':';
+let m = (date.getMinutes() < 10 ? '0' + date.getMinutes() : date.getMinutes()) + ':';
+let s = date.getSeconds() < 10 ? '0' + date.getSeconds() : date.getSeconds();
+return Y + M + D + h + m + s;
+}*/
+
+/*
+var url = "https://rest.coincap.io/v3/rates?apiKey=1df89298c60c91dc061c514595758bbedece43df80fe261fe282dfe825ba8a3f";
+var xmlhttp = new XMLHttpRequest();
+xmlhttp.open("GET", url, true);
+xmlhttp.send();
+
+xmlhttp.onreadystatechange = function() {
+	if (this.readyState == 4 && this.status == 200) {
+		var myObj = JSON.parse(this.responseText);
+		var result = myObj["data"].find(function(item){return item.id === "bitcoin"});
+		var btcUsd = Math.round(result["rateUsd"] * 100) / 100;
+		result = myObj["data"].find(function(item){return item.id === "chinese-yuan-renminbi"});
+		var btcCny = Math.round(1 / result["rateUsd"] * btcUsd * 100) / 100;  //保留两位小数
+		document.getElementById('priceUsd').innerHTML = "Realtime Price(实时价格): <font style='font-weight:bold; color:red'>" + btcUsd + "$, " + btcCny + "¥</font>";
+	}
+};*/
+
 //textarea行高自适应内容
 function ResizeTextarea(textArea,minRows,maxRows){
 	if (textArea.scrollTop == 0) textArea.scrollTop=1;
@@ -1749,11 +1780,10 @@ function toUncompressedPubkey(compressedPubkey) {
 	return uncompressedPubkey = "04" + compressedPubkey.substr(2, 64) + Crypto.util.bytesToHex(integerToBytes(y, 32));
 }
 
-
-function taggedHash(tag, data1, data2){
+/*function taggedHash(tag, data1, data2){
 	var e = Crypto.SHA256(tag);
 	return Crypto.SHA256(Crypto.util.hexToBytes(e + e + data1 + data2));
-}
+}*/
 
 // tweaked public key = P + G * tweak
 function calTweakedPubkey(pubKey, tweak){
@@ -1779,7 +1809,7 @@ function calTweakedPubkey(pubKey, tweak){
 	return tweakedPub.substr(2); //用于生成P2TR地址的tweakedPub不包括奇偶位前缀。
 }
 
-function toP2TRaddr(data, txNet){
+/*function toP2TRaddr(data, txNet){
 	var prefix = "bc";
 	if (txNet != "mainnet") {
 		prefix = "tb";
@@ -1793,11 +1823,11 @@ function toP2TRaddr(data, txNet){
 	var a = bech32.encode(prefix, w, "bech32m");
 	
 	return a;
-}
+}*/
 </script>
 </head>
 <body>
-<div id="priceUsd" style="font-size:13px">Realtime Price(实时价格): </div>
+<!--<div id="priceUsd" style="font-size:13px">Realtime Price(实时价格): </div>-->
 <a href="https://startbitcoin.org">Home</a>&nbsp;&nbsp;
 <a href="https://startbitcoin.org/blog/">Blog</a>&nbsp;&nbsp;
 <a href="/brainwallet/"><font style="font-weight:bold">BrainWallet</font></a>&nbsp;&nbsp;
@@ -2200,8 +2230,6 @@ function toP2TRaddr(data, txNet){
 		<p>The sum of the balances of the selected UTXO(BTC)</p><br>
 		<p>所选UTXO的余额之和(BTC)</p>
 		<textarea id="txUnspentBalSum" rows="1"></textarea><br/><br/>
-		<!--网页初始化的时候，执行-->
-		<script>if(document.getElementById('txSourceAddr').value != ""){getBalance(document.getElementById('txSourceAddr').value); getUnspent(document.getElementById('txSourceAddr').value);}</script>
 	
 		<div class="h2">【Destination Addr - 收币地址】</div>
 		<p style="font-weight:bold">1. For situations where there is change, the default change address is the issuing address! </p><p>2. If the public key is filled in, the locking script is P2PK.</p><br/>
@@ -3138,7 +3166,14 @@ var floatMod = (arg1, arg2) => {
     return floatSub( arg1,intVal ); // 12.4
 }	
 </script>
+
+<!--网页初始化的时候，执行-->
+<!--因为getBalance()和getUnspent()都调用了toNonExponential()，所以要把这段程序放在toNonExponential()之后-->
+<script>if(document.getElementById('txSourceAddr').value != ""){getBalance(document.getElementById('txSourceAddr').value); getUnspent(document.getElementById('txSourceAddr').value);}</script>
+
+
 <a href="https://github.com/happybole/brainwallet/releases" target="_blank">GitHub Repository (zip)</a>
+
 <script>
 !function(p){"use strict";!function(t){var s=window,e=document,i=p,c="".concat("https:"===e.location.protocol?"https://":"http://","sdk.51.la/js-sdk-pro.min.js"),n=e.createElement("script"),r=e.getElementsByTagName("script")[0];n.type="text/javascript",n.setAttribute("charset","UTF-8"),n.async=!0,n.src=c,n.id="LA_COLLECT",i.d=n;var o=function(){s.LA.ids.push(i)};s.LA?s.LA.ids&&o():(s.LA=p,s.LA.ids=[],o()),r.parentNode.insertBefore(n,r)}()}({id:"KnK7lXGvGtZx7noX",ck:"KnK7lXGvGtZx7noX"});
 </script>
