@@ -573,6 +573,13 @@ function txToJSON(version, UTXO, sequence, txDest, txWitness, txLockTime) {
 			txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
 			txJSON.tx_out[i].p2wpkh_v0_script = script;
 		}
+		if (addrType(addr) == "P2TR") {
+			var words = bech32.decode(addr, "bech32m").words; 
+			var hexAddr = Crypto.util.bytesToHex(bech32.fromWords(words.slice(1,words.length)));
+			var script = "1" + " " + hexAddr;
+			txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
+			txJSON.tx_out[i].p2tr_script = script;
+		}
 		if (addrType(addr) == "OP_RETURN") {
 			var script = addr;
 			txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
@@ -608,7 +615,7 @@ function txToJSON(version, UTXO, sequence, txDest, txWitness, txLockTime) {
 function txParseJSON(txJSON, txNet) {
 	var txRaw = txToRaw(txJSON, 1, ""); //1、原始输入形式不体现HashType，所以写死“1”；2、ScriptType不影响法币地址计算，所以写死为空
 	var myObj = txToSource(txRaw, txNet);
-	var txSourceAddr = myObj.txSourceAddr;
+	var txSourceAddr = myObj.txSourceAddr[0];
 	if (txSourceAddr.substr(0, 1) == "0") { //读出来的地址可能是公钥
 		txSourceAddr = pubKeyToAddr(txSourceAddr, txNet);
 	}
@@ -669,7 +676,7 @@ function txToRaw(txJSON, txHashType, txScriptType) {
 		//构建output
 		arr = arr.concat(Bitcoin.Util.numToVarInt(txJSON.tx_out_count));
 		for (var i = 0; i < txJSON.tx_out_count; i++) {
-			//1.由于bitcoin协议规定value的格式是int64，而不是32位（word），所以不能用Crypto.util.wordsToBytes([Math.round(txJSON.tx_out[i].value * 1e8)])。
+			//1.由于bitcoin协议规定value的格式是int64，而不是32位（双word），所以不能用Crypto.util.wordsToBytes([Math.round(txJSON.tx_out[i].value * 1e8)])。
 			//2.BigInteger函数支持将Number或String输入转换成大整数，“''+”的目的就是将Math.round(fval * 1e8)的返回数值结果转换成字符串类型。
 			//3.fval * 1e8将收币金额单位由BTC转换成SAT。
 			//4.round()函数是四舍五入。
@@ -708,10 +715,13 @@ function txToRaw(txJSON, txHashType, txScriptType) {
 	
 		var txRaw = Crypto.util.bytesToHex(arr);
 
-		var txSourceAddr = txToSource(txRaw,"mainnet").txSourceAddr; //网络类型不影响对地址类型的判断，所以写死主网
-		if (txJSON.tx_witness == "" && ((addrType(txSourceAddr) == "P2SH" && (txScriptType == "P2SH-P2WPKH" || txScriptType == "P2SH-P2WSH")) || addrType(txSourceAddr) == "P2WPKH" || addrType(txSourceAddr) == "P2WSH")) {
-			arr.splice(4, 0, 0, 1); //在index=4的位置，删除0个元素，插入“0, 1”两个元素
-			txRaw = Crypto.util.bytesToHex(arr);
+		txSourceAddr = txToSource(txRaw,"mainnet").txSourceAddr; //网络类型不影响对地址类型的判断，所以写死主网
+		for (var i = 0; i < txSourceAddr.length; i++) {
+			if (txJSON.tx_witness == "" && ((addrType(txSourceAddr[i]) == "P2SH" && (txScriptType == "P2SH-P2WPKH" || txScriptType == "P2SH-P2WSH")) || addrType(txSourceAddr[i]) == "P2WPKH" || addrType(txSourceAddr[i]) == "P2WSH" || addrType(txSourceAddr[i]) == "P2TR")) {
+				arr.splice(4, 0, 0, 1); //在index=4的位置，删除0个元素，插入“0, 1”两个元素
+				txRaw = Crypto.util.bytesToHex(arr);
+				break;
+			}
 		}
 
 		return txRaw;
@@ -818,7 +828,7 @@ function txToSource(txRaw, txNet) {
 	}
 
 	var res = {};
-	res.txSourceAddr = txSourceAddr[0];
+	res.txSourceAddr = txSourceAddr;
 	res.version = version;
 	res.UTXO = UTXO;
 	res.sequence = sequence;
@@ -861,14 +871,26 @@ function txToSignedRaw(txRaw, txPriKey, txScriptType) {
 	txJSON.tx_witness = "";
 	var jsonForSign = objClone(txJSON);
 	for (var i = 0; i < txJSON.tx_in_count; i++) {
-		var raw = txRawForSign(jsonForSign, i, txHashType, txScriptType, txPriKey);
-		var sign = Crypto.util.hexToBytes(Sign(raw, txPriKey)); //由于引入了随机数，每次签名结果都不一样，但都是有效的
-		sign.push(parseInt(txHashType, 10)); //签名类型附在签名之后（占1个字节）
-		sign = Crypto.util.bytesToHex(sign);
 		var script = [];
 		script = script.concat(Bitcoin.Util.numToVarInt(txJSON.tx_in[i].script_length));
 		script = script.concat(Crypto.util.hexToBytes(txJSON.tx_in[i].script));
 		var aType = addrType(readAddr(script)); //readAdr()会修改script的内容，所以在if()条件判断中只能执行一次
+
+		var raw = txRawForSign(jsonForSign, i, txHashType, txScriptType, txPriKey);
+		
+		if (aType != "P2TR") {
+			var rawHash = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256(Crypto.util.hexToBytes(raw))));
+			var sign = Crypto.util.hexToBytes(ECDSASign(rawHash, txPriKey)); //由于引入了随机数，每次签名结果都不一样，但都是有效的
+		}
+		else {
+			var rawHash = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256("TapSighash") + Crypto.SHA256("TapSighash") + raw));
+			var tweak = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256("TapTweak") + Crypto.SHA256("TapTweak") + priToPub(txPriKey).substr(2)));
+			var tweakedPrikey = calTweakedPrikey(txPriKey, tweak);
+			var sign = Crypto.util.hexToBytes(SchnorrSign(rawHash, tweakedPrikey)); //由于引入了随机数，每次签名结果都不一样，但都是有效的
+		}
+		sign.push(parseInt(txHashType, 10)); //签名类型附在签名之后（占1个字节）
+		sign = Crypto.util.bytesToHex(sign);
+
 		if (aType == "P2PK") {
 			var script = scriptToBytes(sign);
 			txJSON.tx_in[i].script_length = script.buffer.length;
@@ -929,6 +951,11 @@ function txToSignedRaw(txRaw, txPriKey, txScriptType) {
 		else if(aType == "P2WSH") {
 			alert("The program does not support P2WSH for the time being.");
 		}
+		else if(aType == "P2TR") {
+			txJSON.tx_in[i].script_length = 0;
+			txJSON.tx_in[i].script = "";
+			txJSON.tx_witness = txJSON.tx_witness + "01" + Crypto.util.bytesToHex(scriptToBytes(sign).buffer);
+		}
 	}
 	var res = txToRaw(JSON.stringify(txJSON, null, '\t'), txHashType, txScriptType);
 	res = res.substr(0, res.length - 16 * txJSON.tx_in_count); //去掉RAW最后的input金额
@@ -942,17 +969,17 @@ function txRawForSign(o, n, t, s, p) {
 	script = script.concat(Bitcoin.Util.numToVarInt(o.tx_in[n].script_length));
 	script = script.concat(Crypto.util.hexToBytes(o.tx_in[n].script));
 	var aType = addrType(readAddr(script)); //readAdr()会修改script的内容，所以在if()条件判断中只能执行一次
+	//非隔离见证
 	if (aType == "P2PK" || aType == "P2PKH" || (aType == "P2SH" && (s == "P2SH-P2PK" || s == "P2SH-P2PKH" || s == "P2SH-P2MS"))) {
+		//这一步必不可少！！！因为一旦直接操作o，下次再调用txRawForSign()的时候，o是操作之后的o了。
 		var u = objClone(o);
-		//先清空所有input的脚本
+		//ALL
 		for (var i = 0; i < u.tx_in_count; i++) {
-			u.tx_in[i].script_length = 0;
-			u.tx_in[i].script = "";
+			//将非签名所在输入的script_length置为0，锁定脚本置空
+			i != n && (u.tx_in[i].script_length = 0, u.tx_in[i].script = "");
 		}
-		u.tx_in[n].script_length = o.tx_in[n].script_length;
-		u.tx_in[n].script = o.tx_in[n].script;
 		//NONE
-		if ((t & 31) == 2) {
+		if ((t & 0x1f) == 2) {
 			//清空所有output
 			u.tx_out_count = 0;
 			u.tx_out = [];
@@ -961,7 +988,7 @@ function txRawForSign(o, n, t, s, p) {
 				i != n && (u.tx_in[i].sequence = 0);
 			}
 		//SINGLE
-		} else if ((t & 31) == 3) {
+		} else if ((t & 0x1f) == 3) {
 			//当input数量大于output数量时，才会出现。
 			//即当input没有对应的output时，对0000000000000000000000000000000000000000000000000000000000000001进行签名
 			if (n >= u.tx_out_count) {
@@ -969,14 +996,14 @@ function txRawForSign(o, n, t, s, p) {
 			}
 			//高于与签名相同index的output被删除
 			u.tx_out_count = n + 1;
-			u.tx_out.length = n + 1; //u.tx_out是个数组，这是在设置数组的元素个数
+			//u.tx_out是个数组，这是在设置数组的元素个数，删除高于index的output
+			u.tx_out.length = n + 1;
 			//低于与签名相同index的output被置空，
 			//即value置为-1（等价置为0xffffffffffffffff，因为其与-1互为补码），
 			//script置空，script_length置为0；
 			for (var i = 0; i < n; i++) {
-				u.tx_out[i] = {};
 				u.tx_out[i].script_length = 0;
-				for (var j in u.tx_out[a]) {
+				for (var j in u.tx_out[i]) {
 					if (j.indexOf("_script") != -1) {
 						u.tx_out[i][j] = "";
 					}
@@ -995,7 +1022,8 @@ function txRawForSign(o, n, t, s, p) {
 		f = f.substr(0, f.length - 16 * u.tx_in_count); //去掉RAW最后的input金额
 		return f;
 	}
-	else {  //hashForWitnessV0
+	//hashForWitnessV0
+	else if ((aType == "P2SH" && (s == "P2SH-P2WPKH" || s == "P2SH-P2WSH")) || aType == "P2WPKH" || aType == "P2WSH") {
 		var tbuffer = [];
 
 		//version
@@ -1019,7 +1047,7 @@ function txRawForSign(o, n, t, s, p) {
 			sequence = sequence.concat(Crypto.util.wordsToBytes([o.tx_in[i].sequence]).reverse());
 		}
 		var hashSequence = Crypto.util.hexToBytes(Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256(sequence))));
-		if (t & 0x80 || (t & 31) == 2 || (t & 31) == 3) { //ANYONECANPAY、NONE或者SINGLE
+		if (t & 0x80 || (t & 0x1f) == 2 || (t & 0x1f) == 3) { //ANYONECANPAY、NONE或者SINGLE
 			hashSequence = Crypto.util.hexToBytes("0000000000000000000000000000000000000000000000000000000000000000");
 		}
 		tbuffer = tbuffer.concat(hashSequence);
@@ -1080,12 +1108,12 @@ function txRawForSign(o, n, t, s, p) {
 			outputs = outputs.concat(scriptToBytes(script).buffer);
 		}
 		var hashOutputs = Crypto.util.hexToBytes(Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256(outputs))));
-		if ((t & 31) == 2 || ((t & 31) == 3 && n >= o.tx_out_count)) { //(NONE)或者(SINGLE且output高于签名所在index）
+		if ((t & 0x1f) == 2 || ((t & 0x1f) == 3 && n >= o.tx_out_count)) { //(NONE)或者(SINGLE且output高于签名所在index）
 			hashOutputs = Crypto.util.hexToBytes("0000000000000000000000000000000000000000000000000000000000000000");
 		}
-		else if	((t & 31) == 3 && n < o.tx_out_count) {  //SINGLE且output等于低于签名所在index
+		else if	((t & 0x1f) == 3 && n < o.tx_out_count) {  //SINGLE且output等于低于签名所在index
 			outputs = [];
-			//1.由于bitcoin协议规定value的格式是int64，而不是32位（word），所以不能用Crypto.util.wordsToBytes([Math.round(txJSON.tx_out[i].value * 1e8)])。
+			//1.由于bitcoin协议规定value的格式是int64，而不是32位（双word），所以不能用Crypto.util.wordsToBytes([Math.round(txJSON.tx_out[i].value * 1e8)])。
 			//2.BigInteger函数支持将Number或String输入转换成大整数，“''+”的目的就是将Math.round(fval * 1e8)的返回数值结果转换成字符串类型。
 			//3.fval * 1e8将收币金额单位由BTC转换成SAT。
 			//4.round()函数是四舍五入。
@@ -1114,8 +1142,188 @@ function txRawForSign(o, n, t, s, p) {
 		tbuffer = tbuffer.concat(Crypto.util.wordsToBytes([t]).reverse());
 
 		var f = Crypto.util.bytesToHex(tbuffer);
-		//因为自己构建的Sign()函数的收入是原始数据，Sign内部会先对原始数据进行double sha256再签名
-		//var f = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256(tbuffer)));
+		return f;
+	}
+
+	//hashForWitnessV1
+	else {
+		var tbuffer = [];
+		
+		//sighash epoch
+		var tbuffer = tbuffer.concat([0]);
+
+		//hashType
+		var tbuffer = tbuffer.concat([t]);
+
+		//version
+		tbuffer = tbuffer.concat(Crypto.util.wordsToBytes([o.version]).reverse());
+		
+		//locktime
+		tbuffer = tbuffer.concat(Crypto.util.wordsToBytes([o.lock_time]).reverse());
+		
+		//hashPrevouts
+		var prevouts = [];
+		for (var i = 0; i < o.tx_in_count; i++) {
+			prevouts = prevouts.concat(Crypto.util.hexToBytes(o.tx_in[i].previous_output.tx_hash_big_endian).reverse());
+			prevouts = prevouts.concat(Crypto.util.wordsToBytes([o.tx_in[i].previous_output.tx_output_n]).reverse());
+		}
+		var hashPrevouts = Crypto.util.hexToBytes(Crypto.SHA256(prevouts));  //与hashForWitnessV0不同，只需要一次sha256
+		if (t & 0x80) { //ANYONECANPAY
+			hashPrevouts = [];
+		}
+		tbuffer = tbuffer.concat(hashPrevouts);
+		
+		//hashValue
+		//1.由于bitcoin协议规定value的格式是int64，而不是32位（word），所以不能用Crypto.util.wordsToBytes([Math.round(txJSON.tx_out[i].value * 1e8)])。
+		//2.BigInteger函数支持将Number或String输入转换成大整数，“''+”的目的就是将Math.round(fval * 1e8)的返回数值结果转换成字符串类型。
+		//3.fval * 1e8将收币金额单位由BTC转换成SAT。
+		//4.round()函数是四舍五入。
+		//5.10表示输入的字符串是10进制。
+		var value = [];
+		var tx_in_value = o.tx_in_value.split(" ");
+		for (var i = 0; i < tx_in_value.length; i++) { //与hashForWitnessV0不同，是所有value的sha256
+			var v = new BigInteger('' + Math.round(tx_in_value[i] * 1e8), 10);
+			if (v instanceof BigInteger) {
+				v = v.toByteArrayUnsigned().reverse();
+				while (v.length < 8) v.push(0);
+			}
+			value = value.concat(v);
+		}
+		var hashValue = Crypto.util.hexToBytes(Crypto.SHA256(value));
+		if (t & 0x80) { //ANYONECANPAY
+			hashValue = [];
+		}
+		tbuffer = tbuffer.concat(hashValue);
+
+		//hash scriptpubkeys
+		var script = [];
+		for (var i = 0; i < o.tx_in_count; i++) {
+			script = script.concat(Bitcoin.Util.numToVarInt(o.tx_in[i].script_length));
+			script = script.concat(Crypto.util.hexToBytes(o.tx_in[i].script));
+		}
+/*		var aType = addrType(readAddr(script)); //readAdr()会修改script的内容，所以在if()条件判断中只能执行一次
+		if ((aType == "P2SH" && s == "P2SH-P2WPKH") || aType == "P2WPKH") {
+			var pubHash = Crypto.RIPEMD160(Crypto.util.hexToBytes(Crypto.SHA256(Crypto.util.hexToBytes(priToPub(p)))));
+			//prevOutScript = script_length + script
+			tbuffer = tbuffer.concat(Crypto.util.hexToBytes("1976a914" + pubHash + "88ac")); //P2WPKH和P2SH-P2WPKH填充的是：脚本长度+P2PKH
+		}
+		else if (aType == "P2TR") {
+			var pubKey = priToPub(p);
+			var tweak = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256("TapTweak") + Crypto.SHA256("TapTweak") + priToPub(p).substr(2)));
+			var tweakedPub = calTweakedPubkey(pubKey, tweak);
+			tbuffer = tbuffer.concat(Crypto.util.hexToBytes("5120" + tweakedPub)); //P2WPKH和P2SH-P2WPKH填充的是：脚本长度+P2PKH
+		}
+		else {
+			alert("The program does not support P2SH-P2WSH for the time being.");
+		}*/
+		var hashScript = Crypto.util.hexToBytes(Crypto.SHA256(script));
+		if (t & 0x80) { //ANYONECANPAY
+			hashScript = [];
+		}
+		tbuffer = tbuffer.concat(hashScript);
+
+		//hashSequence
+		var sequence = [];
+		for (var i = 0; i < o.tx_in_count; i++) {
+			sequence = sequence.concat(Crypto.util.wordsToBytes([o.tx_in[i].sequence]).reverse());
+		}
+		var hashSequence = Crypto.util.hexToBytes(Crypto.SHA256(sequence));  //与hashForWitnessV0不同，只需要一次sha256
+		if (t & 0x80) { //ANYONECANPAY
+			hashSequence = [];
+		}
+		tbuffer = tbuffer.concat(hashSequence);
+
+		//hashOutputs
+		var outputs = [];
+		for (var i = 0; i < o.tx_out_count; i++) {
+			//1.由于bitcoin协议规定value的格式是int64，而不是32位（双word），所以不能用Crypto.util.wordsToBytes([Math.round(txJSON.tx_out[i].value * 1e8)])。
+			//2.BigInteger函数支持将Number或String输入转换成大整数，“''+”的目的就是将Math.round(fval * 1e8)的返回数值结果转换成字符串类型。
+			//3.fval * 1e8将收币金额单位由BTC转换成SAT。
+			//4.round()函数是四舍五入。
+			//5.10表示输入的字符串是10进制。
+			var value = new BigInteger('' + Math.round(o.tx_out[i].value * 1e8), 10);
+			if (value instanceof BigInteger) {
+				value = value.toByteArrayUnsigned().reverse();
+				while (value.length < 8) value.push(0);
+			}
+			outputs = outputs.concat(value);
+			outputs = outputs.concat(Bitcoin.Util.numToVarInt(o.tx_out[i].script_length));
+			for (var j in o.tx_out[i]) {
+				if (j.indexOf("_script") != -1) {
+					var script = o.tx_out[i][j];
+				}
+			}
+			outputs = outputs.concat(scriptToBytes(script).buffer);
+		}
+		var hashOutputs = Crypto.util.hexToBytes(Crypto.SHA256(outputs));
+		if ((t & 0x1f) == 2 || ((t & 0x1f) == 3 && n >= o.tx_out_count)) { //(NONE)或者(SINGLE且output高于签名所在index）
+			hashOutputs = [];
+		}
+		tbuffer = tbuffer.concat(hashOutputs);
+		
+		//spend type
+		tbuffer = tbuffer.concat([0]);
+
+		//Input Outpoint、value、Input ScriptPubKey、Input Sequence
+		if (t & 0x80) { //ANYONECANPAY
+			//Input Outpoint
+			tbuffer = tbuffer.concat(Crypto.util.hexToBytes(o.tx_in[n].previous_output.tx_hash_big_endian).reverse());
+			tbuffer = tbuffer.concat(Crypto.util.wordsToBytes([o.tx_in[n].previous_output.tx_output_n]).reverse());
+			
+			//value
+			//1.由于bitcoin协议规定value的格式是int64，而不是32位（word），所以不能用Crypto.util.wordsToBytes([Math.round(txJSON.tx_out[i].value * 1e8)])。
+			//2.BigInteger函数支持将Number或String输入转换成大整数，“''+”的目的就是将Math.round(fval * 1e8)的返回数值结果转换成字符串类型。
+			//3.fval * 1e8将收币金额单位由BTC转换成SAT。
+			//4.round()函数是四舍五入。
+			//5.10表示输入的字符串是10进制。
+			var value = new BigInteger('' + Math.round(o.tx_in_value.split(" ")[n] * 1e8), 10);
+			if (value instanceof BigInteger) {
+				value = value.toByteArrayUnsigned().reverse();
+				while (value.length < 8) value.push(0);
+			}
+			tbuffer = tbuffer.concat(value);
+			
+			//Input ScriptPubKey
+			tbuffer = tbuffer.concat(Bitcoin.Util.numToVarInt(o.tx_in[n].script_length));
+			tbuffer = tbuffer.concat(Crypto.util.hexToBytes(o.tx_in[n].script));
+			
+			//Input Sequence
+			tbuffer = tbuffer.concat(Crypto.util.wordsToBytes([o.tx_in[n].sequence]).reverse());
+		}
+		
+		//input index
+		var index = Crypto.util.wordsToBytes([n]).reverse();
+		if (t & 0x80) { //ANYONECANPAY
+			index = [];
+		}
+		tbuffer = tbuffer.concat(index);
+
+		//Hash Single Output
+		if ((t & 0x1f) == 3 && n < o.tx_out_count) {  //SINGLE且output等于低于签名所在index
+			output = [];
+			//1.由于bitcoin协议规定value的格式是int64，而不是32位（双word），所以不能用Crypto.util.wordsToBytes([Math.round(txJSON.tx_out[i].value * 1e8)])。
+			//2.BigInteger函数支持将Number或String输入转换成大整数，“''+”的目的就是将Math.round(fval * 1e8)的返回数值结果转换成字符串类型。
+			//3.fval * 1e8将收币金额单位由BTC转换成SAT。
+			//4.round()函数是四舍五入。
+			//5.10表示输入的字符串是10进制。
+			var value = new BigInteger('' + Math.round(o.tx_out[n].value * 1e8), 10);
+			if (value instanceof BigInteger) {
+				value = value.toByteArrayUnsigned().reverse();
+				while (value.length < 8) value.push(0);
+			}
+			output = output.concat(value);
+			output = output.concat(Bitcoin.Util.numToVarInt(o.tx_out[n].script_length));
+			for (var j in o.tx_out[n]) {
+				if (j.indexOf("_script") != -1) {
+					var script = o.tx_out[n][j];
+				}
+			}
+			output = output.concat(scriptToBytes(script).buffer);
+			hashOutput = Crypto.util.hexToBytes(Crypto.SHA256(output));
+			tbuffer = tbuffer.concat(hashOutputs);
+		}
+
+		var f = Crypto.util.bytesToHex(tbuffer);
 		return f;
 	}
 }
@@ -1238,6 +1446,19 @@ function readAddr(f, txNet) {
 		a = bech32.toWords(a);
 		a.unshift(0); //在数组开头添加一个元素
 		a = bech32.encode(prefix, a, "bech32");
+		for (var i = 0; i < a_len; i++) f.shift();
+	}
+	//签名前：p2tr
+	else if (op == 0x51 && f[0] == 0x20) {
+		var prefix = "bc";
+		if (txNet != "mainnet") {
+			prefix = "tb";
+		}
+		var a_len = f.shift();
+		a = f.slice(0, a_len);
+		a = bech32.toWords(a);
+		a.unshift(1); //在数组开头添加一个元素
+		a = bech32.encode(prefix, a, "bech32m");
 		for (var i = 0; i < a_len; i++) f.shift();
 	}
 	//签名后：p2pk
@@ -1397,17 +1618,39 @@ function readAddr(f, txNet) {
 				addr.unshift(0); //在数组开头添加一个元素
 				a[i] = bech32.encode(prefix, addr, "bech32");		
 			}
+			//签名后：p2tr
+			else if (f[0] ==0x01 && isSignature(f.slice(1))) {
+				a[i] = "P2TR";
+				var itemNum = f.shift();
+				for (var j = 0; j < itemNum; j++) {
+					var itemLength = readVarInt(f);
+					var item = readBuffer(f, itemLength);
+				}
+			}
 			i++;
 		}
 	}
 	//OP_RETURN
 	else if (op == 0x6a) {
 		d_len = readVarInt(f);
-		if (d_len == 0x4c) { //OP_PUSHDATA1，OP_RETURN provided the total scriptPubKey length is at most 83 bytes.
-			d_len = readVarInt(f);
+		//The next opcode bytes is data to be pushed onto the stack 
+		if (d_len >= 0x01 && d_len <= 0x4b) {
+			a = "OP_RETURN" + " " + Crypto.util.bytesToHex(f.slice(0, d_len));
+			for (var i = 0; i < d_len; i++) f.shift();
 		}
-		a = "OP_RETURN" + " " + Crypto.util.bytesToHex(f.slice(0, d_len));
-		for (var i = 0; i < d_len; i++) f.shift();
+		//0x4c对应操作码OP_PUSHDATA1。由于OP_RETURN provided the total scriptPubKey length is at most 83 bytes，这里其实用不到OP_PUSHDATA1，但解析个别交易时，发现有用到OP_PUSHDATA1的。
+		else if (d_len == 0x4c) {
+			d_len = readVarInt(f);
+			a = "OP_RETURN" + " " + Crypto.util.bytesToHex(f.slice(0, d_len));
+			for (var i = 0; i < d_len; i++) f.shift();
+		}
+		//OP_2-OP_16 82-96 0x52-0x60 he number in the word name (2-16) is pushed onto the stack.（把对应的数字压入栈。）
+		else if (d_len >= 0x52 && d_len <= 0x60) {
+			var OP_NUM = "OP_" + (d_len - 80);
+			d_len = readVarInt(f);
+			a = "OP_RETURN" + " " + OP_NUM + " " + Crypto.util.bytesToHex(f.slice(0, d_len));
+			for (var i = 0; i < d_len; i++) f.shift();
+		}
 	}
 	else {
 		a = "";
@@ -1458,6 +1701,16 @@ function readHashType(f) {
 					var item = readBuffer(f, itemLength);
 				}	
 			}
+			//签名后：p2tr
+			else if (f[0] ==0x01 && isSignature(f.slice(1))) {
+				var itemNum = f.shift();
+				if (f[0] == 65) h[i] = f[f[0]];
+				if (f[0] == 64) h[i] = 0x01; //Schnorr Sign如果不带HashType，默认HashType为1。
+				for (var j = 0; j < itemNum; j++) {
+					var itemLength = readVarInt(f);
+					var item = readBuffer(f, itemLength);
+				}
+			}
 			i++;
 		}
 	}
@@ -1468,8 +1721,12 @@ function readHashType(f) {
 }
 
 function isSignature (f) {
-	//签名的长度(包括最后的HashType)介于0x47与0x49之间，DER签名格式的前缀固定是0x30，DER签名格式中的剩余签名的长度介于0x44与0x46之间
+	//签名的长度(包括最后的HashType!!!!!!!)介于0x47(71)与0x49(73)之间，DER签名格式的前缀固定是0x30，DER签名格式中的剩余签名的长度介于0x44与0x46之间
 	if ((f[0] >= 0x47 && f[0] <= 0x49) && f[1] == 0x30 && (f[2] >= 0x44 && f[2] <= 0x46)) {
+		return true;
+	}
+	// Schnorr Sign
+	if (f[0] == 64 || (f[0] == 65 && (f[66 - 1] == 0x01 || f[66 - 1] == 0x02 || f[66 - 1] == 0x03 || f[66 - 1] == 0x81 || f[66 - 1] == 0x82 || f[66 - 1] == 0x83))) { //Schnorr Sign如果不带HashType，默认HashType为1。
 		return true;
 	}
 	else {
@@ -1570,6 +1827,9 @@ function scriptToBytes(script) {
 	if (s[0] == "0") {
 		s[0] = "OP_0";
 	}
+	if (s[0] == "1") {
+		s[0] = "OP_1";
+	}
 	var newScript = new Bitcoin.Script();
 	for (var q in s) {
 		if (Bitcoin.Opcode.map.hasOwnProperty(s[q])){
@@ -1588,7 +1848,14 @@ function isAddr(addr) {
 	}
 	else if (addrType(addr) == "P2WPKH" || addrType(addr) == "P2WSH") {
 		try {
-			bech32.decode(addr, "bech32");
+			var words = bech32.decode(addr, "bech32").words; 
+		} catch(err) {
+				return false;
+		}
+	}
+	else if (addrType(addr) == "P2TR") {
+		try {
+			var words = bech32.decode(addr, "bech32m").words; 
 		} catch(err) {
 				return false;
 		}
@@ -1623,8 +1890,8 @@ function addrType(addr) {
 	if (str.indexOf(addr.substr(0,1)) != -1) {
 		return "P2SH";
 	}
-	str = "bc1BC1tb1TB1";  //bech32地址不区分大小写，但必须要么全都大写或要么全都小写
-	if (str.indexOf(addr.substr(0,3)) != -1) {
+	str = "bc1qBC1Qtb1qTB1Q";  //bech32地址不区分大小写，但必须要么全都大写或要么全都小写
+	if (str.indexOf(addr.substr(0,4)) != -1) {
 		try {
 			var words = bech32.decode(addr, "bech32").words; 
 			var hexAddr = Crypto.util.bytesToHex(bech32.fromWords(words.slice(1,words.length)));
@@ -1636,9 +1903,14 @@ function addrType(addr) {
 			return "NONE";
 		}
 	}
+	str = "bc1pBC1Ptb1pTB1P";  //bech32m地址不区分大小写，但必须要么全都大写或要么全都小写
+	if (str.indexOf(addr.substr(0,4)) != -1) {
+		return "P2TR";
+	}
 	if (addr.substr(0,9) == "OP_RETURN") {
 		return "OP_RETURN";
 	}
+	return "NONE";
 }
 
 //把字符串按固定长度分割成数组
@@ -1726,44 +1998,43 @@ function ptToPub(pt, compressedFlag) {
 	return Crypto.util.bytesToHex(enc);
 }
 
-//用私钥签名
-function Sign(message, WIF_priKey) {
-	var msgHash = Crypto.util.hexToBytes(Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256(Crypto.util.hexToBytes(message)))));
-	
-	var compressed = true;
-	var res = Bitcoin.Base58.decode(WIF_priKey);
-	if (res.length == 37) {
-		var compressed = false;
-	}
-	var priKey = res.slice(1,33);
-
+//用私钥进行ECDSA签名
+function ECDSASign(msgHash, WIF_priKey) {
+	msgHash = Crypto.util.hexToBytes(msgHash);
+	var priKey = Bitcoin.Base58.decode(WIF_priKey).slice(1,33);
+                          
 	var eckey = new Bitcoin.ECKey(priKey);
 	var signature = eckey.sign(msgHash);  //签名用的随机私钥k生成过程：在原bicoinjs-lib的SecureRandom()的基础上，再拼接上私钥和待签名交易的哈希值，即k = SHA256(privKey + SHA256(SHA256(message)) + SecureRandom())。由于签名时引入了随机数，对同一信息签名时，每次签名值都发生变化，但每个签名都是有效的。
-	return signature = Crypto.util.bytesToHex(signature);
-}
+	return signature = Crypto.util.bytesToHex(signature);	      
+}           
+                                                                                    
+//用公钥验证ECDSA签名
+function ECDSAVerify(msgHash, signature, pubKey) {
+	try{
+		msgHash = Crypto.util.hexToBytes(msgHash);
+		
+		signature = Crypto.util.hexToBytes(signature);
 
-//用公钥验证签名
-function Verify(message, signature, pubKey) {
-	var msgHash = Crypto.util.hexToBytes(Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256(Crypto.util.hexToBytes(message)))));
-	signature = Crypto.util.hexToBytes(signature);
+		if (pubKey.substr(0,2) != "04") {
+			pubKey = toUncompressedPubkey(pubKey);
+		}
+		pubKey=Crypto.util.hexToBytes(pubKey);    
 
-	if (pubKey.substr(0,2) != "04") {
-		pubKey = toUncompressedPubkey(pubKey);
-	}
-	pubKey=Crypto.util.hexToBytes(pubKey);
+		var eckey = new Bitcoin.ECKey();
+		eckey.setPub(pubKey);
+		eckey.setCompressed(false);
+		return eckey.verify(msgHash,signature); //eckey.verify()只能用非压缩公钥验证签名。
+	}catch(err) {
+		return "error";
+	}                           
 
-	var eckey = new Bitcoin.ECKey();
-	eckey.setPub(pubKey);
-	eckey.setCompressed(false);
-	return eckey.verify(msgHash,signature); //eckey.verify()只能用非压缩公钥验证签名。
-}
+}   
 
 //压缩公钥转换成非压缩公钥
 function toUncompressedPubkey(compressedPubkey) {
-	var x_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(compressedPubkey.substr(2,64)));
+	var x_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(compressedPubkey.substr(2)));
 
-	var p = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
-	var p_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(p));
+	var p_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"));
                           
 	//根据模公式，可知y^2 = (x^3 + 7) mod p = (x^3 mod p + 7) mod p
 	var y_squre = x_bn.pow(3).mod(p_bn).add(BigInteger.fromByteArrayUnsigned([7])).mod(p_bn); //a.pow(b)，表示a^b，其中a为BigInteger类，指数b必须是int类型
@@ -1777,13 +2048,30 @@ function toUncompressedPubkey(compressedPubkey) {
 		y = y.negate().mod(p_bn);
 	}
 
-	return uncompressedPubkey = "04" + compressedPubkey.substr(2, 64) + Crypto.util.bytesToHex(integerToBytes(y, 32));
+	return uncompressedPubkey = "04" + compressedPubkey.substr(2) + Crypto.util.bytesToHex(integerToBytes(y, 32));
 }
 
-/*function taggedHash(tag, data1, data2){
-	var e = Crypto.SHA256(tag);
-	return Crypto.SHA256(Crypto.util.hexToBytes(e + e + data1 + data2));
-}*/
+// tweaked private key = k + tweak, 如果公钥的奇偶前缀是03，tweaked private key = n - k + tweak
+function calTweakedPrikey(WIF_priKey, tweak){
+	var priKey = Bitcoin.Base58.decode(WIF_priKey);
+	if (priKey.length == 37) {
+		alert('The Schnorr Signature does not support the uncompressed private key. - Schnorr签名不支持非压缩私钥。');
+		return 	false;
+	}
+	var priKey = priKey.slice(1,33);
+
+	var p_bn = BigInteger.fromByteArrayUnsigned(priKey);
+	var n_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"));
+	if (priToPub(WIF_priKey).substr(0,2) == "03") {
+		p_bn = n_bn.subtract(p_bn);
+	}
+
+	var t_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(tweak));
+	var tweakedPrikey = p_bn.add(t_bn).mod(n_bn);
+	tweakedPrikey = Crypto.util.bytesToHex(integerToBytes(tweakedPrikey, 32));
+	
+	return tweakedPrikey;
+}
 
 // tweaked public key = P + G * tweak
 function calTweakedPubkey(pubKey, tweak){
@@ -1824,6 +2112,101 @@ function calTweakedPubkey(pubKey, tweak){
 	
 	return a;
 }*/
+
+//用私钥进行Schnorr签名
+function SchnorrSign(msgHash, tweakedPrikey) {
+	//生成随机数
+	var n_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"));
+	var aux_rand = Bitcoin.ECDSA.getBigRandom(n_bn);
+	aux_rand = Crypto.util.bytesToHex(integerToBytes(aux_rand, 32));
+	var aux_rand_hash = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256("BIP0340/aux") + Crypto.SHA256("BIP0340/aux") + aux_rand));
+	var aux_rand_hash_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(aux_rand_hash));
+
+	//生成tweaked公钥，并“纠正tweaked私钥，如果公钥的奇偶位是03”
+	var tweakedPrikey_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(tweakedPrikey));
+	var X9EC = getSECCurveByName("secp256k1");
+	var pt = X9EC.getG().multiply(tweakedPrikey_bn);
+	var tweakedPubkey = ptToPub(pt, true);
+	if (tweakedPubkey.substr(0,2) == "03") {
+		tweakedPrikey_bn = n_bn.subtract(tweakedPrikey_bn);
+	}
+	var p = tweakedPubkey.substr(2);
+	
+	//tweaked私钥与随机数做异或运算
+	var t = tweakedPrikey_bn.xor(aux_rand_hash_bn);
+	t = Crypto.util.bytesToHex(integerToBytes(t, 32));
+
+	//计算内部私钥及公钥，注意：计算私钥是mod n，计算公钥x、y是mod p
+	var k = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256("BIP0340/nonce") + Crypto.SHA256("BIP0340/nonce") + t + p + msgHash));
+	k_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(k)).mod(n_bn);
+	pt = X9EC.getG().multiply(k_bn);
+	var internalPubkey = ptToPub(pt, true);
+	if (internalPubkey.substr(0,2) == "03") {
+		k_bn = n_bn.subtract(k_bn);
+	}
+	var r = internalPubkey.substr(2);
+
+	//计算challenge
+	var challenge = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256("BIP0340/challenge") + Crypto.SHA256("BIP0340/challenge") + r + p + msgHash));
+	challenge_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(challenge)).mod(n_bn);
+	
+	//计算签名中的s值，s = (k + ed)%n
+	var s_bn = k_bn.add(challenge_bn.multiply(tweakedPrikey_bn)).mod(n_bn);
+	var s = Crypto.util.bytesToHex(integerToBytes(s_bn, 32));
+
+	return r + s;
+}
+
+//用公钥进行Schnorr签名验证
+function SchnorrVerify(msgHash, signature, tweakedPubkey) {
+	var p_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"));
+	var r = signature.substr(0,64);
+	var r_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(r));
+	var s = signature.substr(64,64);
+	var s_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(s));
+	if (signature.length != 128 || r_bn.compareTo(p_bn) >= 0 || s_bn.compareTo(p_bn) >= 0) {
+		return "error";
+	}
+	
+	if (tweakedPubkey.length != 64 && tweakedPubkey.length != 66 && tweakedPubkey.length != 130) {
+		return "error";
+	}
+	else if (tweakedPubkey.length == 66 || tweakedPubkey.length == 130) {
+		tweakedPubkey = tweakedPubkey.substr(2, 64);
+	}
+
+	//sG = rG + edG
+	//sG = R + eP
+	//sG - eP = R
+	//sG + (n - e)P = R
+
+	//计算sG
+	var X9EC = getSECCurveByName("secp256k1");
+	var sG = X9EC.getG().multiply(s_bn);
+	
+	//计算challenge
+	var n_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"));
+	var challenge = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256("BIP0340/challenge") + Crypto.SHA256("BIP0340/challenge") + r + tweakedPubkey + msgHash));
+	challenge_bn = BigInteger.fromByteArrayUnsigned(Crypto.util.hexToBytes(challenge)).mod(n_bn);
+
+	//计算P
+	var pubKey = toUncompressedPubkey("02" + tweakedPubkey);
+	var pPoint = X9EC.getCurve().decodePointHex(pubKey); //这里的pubKey是曲线上的任意非压缩格式的点
+
+	//计算(n - e)P
+	var n_eP = pPoint.multiply(n_bn.subtract(challenge_bn));
+	
+	//计算sG + (n - e)P
+	var calculatedrPoint = sG.add(n_eP);
+	var calculatedr = ptToPub(calculatedrPoint, true).substr(2);
+
+	if (calculatedr == r) {
+		return true;
+	}
+	else {
+	return false;	
+	}
+}
 </script>
 </head>
 <body>
@@ -2098,7 +2481,7 @@ function calTweakedPubkey(pubKey, tweak){
 			<textarea id="nativeVer" rows="1" style="background-color:#eeeeee" readonly="">0</textarea><br/><br/>
 	
 			<!--concate(Version+Bech32 Address) - 拼接(地址版本号+Bech32地址-->
-			<button id="BTN_nativeVer_nativeAddrtoWords" onclick="var words = document.getElementById('nativeAddrtoWords').value.split(','); words.unshift(parseInt(document.getElementById('nativeVer').value)); document.getElementById('nativeVer_nativeAddrtoWords').value = words; document.getElementById('nativeVer_nativeAddrtoBech32').value = ''; for(i=0;i<words.length;i++){document.getElementById('nativeVer_nativeAddrtoBech32').value += bech32.CHARSET.charAt(words[i])} var checksum = bech32.createChecksum(document.getElementById('HRP_Seperator').value.substr(0,2), document.getElementById('nativeVer_nativeAddrtoWords').value.split(','), 'bech32'); document.getElementById('nativeChecksum').value = checksum; document.getElementById('nativeChecksumtoBech32').value = ''; for(i=0;i<checksum.length;i++){document.getElementById('nativeChecksumtoBech32').value += bech32.CHARSET.charAt(checksum[i])}">concate(Version+Bech32 Address) - 拼接(版本号+Bech32地址)</button>
+			<button id="BTN_nativeVer_nativeAddrtoWords" onclick="var words = document.getElementById('nativeAddrtoWords').value.split(','); words.unshift(parseInt(document.getElementById('nativeVer').value)); document.getElementById('nativeVer_nativeAddrtoWords').value = words; document.getElementById('nativeVer_nativeAddrtoBech32').value = ''; for(i=0;i<words.length;i++){document.getElementById('nativeVer_nativeAddrtoBech32').value += bech32.CHARSET.charAt(words[i])} var checksum = bech32.createChecksum(document.getElementById('HRP_Separator').value.substr(0,2), document.getElementById('nativeVer_nativeAddrtoWords').value.split(','), 'bech32'); document.getElementById('nativeChecksum').value = checksum; document.getElementById('nativeChecksumtoBech32').value = ''; for(i=0;i<checksum.length;i++){document.getElementById('nativeChecksumtoBech32').value += bech32.CHARSET.charAt(checksum[i])}">concate(Version+Bech32 Address) - 拼接(版本号+Bech32地址)</button>
 			<button onclick="document.getElementById('nativeVer').value = document.getElementById('nativeVer_nativeAddrtoWords').value.split(',').slice(0,1); var words = document.getElementById('nativeVer_nativeAddrtoWords').value.split(','); document.getElementById('nativeAddrtoWords').value = words.slice(1,words.length); document.getElementById('nativeAddrtoBech32').value = ''; for(i=1;i<words.length;i++){document.getElementById('nativeAddrtoBech32').value += bech32.CHARSET.charAt(words[i])}">Inverse Calculation - 逆算</button><br/>
 			<textarea id="nativeVer_nativeAddrtoWords" rows="2" spellcheck="false"></textarea><br/><br/>
 			<p>Corresponding Bech32 address with version number in Bech32 format (version number 0, corresponding Bech32 encoding is q).</p><br/>
@@ -2107,9 +2490,9 @@ function calTweakedPubkey(pubKey, tweak){
 			
 			<!--Bech32 Address Prefix (HRP)+Separator(1) - Bech32地址前缀(HRP)+分隔符(1)-->
 			<div class="h2">【Bech32 Address Prefix(HRP)+Separator(1) - Bech32地址前缀(HRP)+分隔符(1)】</div>
-			<p>The main network address prefix is bc, the test network address prefix is tb, and the separator is the number 1.</p><br/>
-			<p>主网地址前缀是bc，测试网地址前缀是tb，分隔符是数字1。</p>
-			<textarea id="HRP_Seperator" rows="1">bc1</textarea><br/><br/>
+			<p>bc1 - Main Net address prefix(bc) + Separator(1); tb1 - Test Net address prefix(tb) + Separator(1).</p><br/>
+			<p>bc1 - 主网地址前缀(bc) + 分隔符(1)；tb1 - 测试网地址前缀(tb) + 分隔符(1)。</p>
+			<textarea id="HRP_Separator" rows="1" oninput="document.getElementById('BTN_nativeVer_nativeAddrtoWords').onclick();">bc1</textarea><br/><br/>
 	
 			<!--Address Checksum - 地址校验码-->
 			<div class="h2">【Address Checksum - 地址校验码】</div>
@@ -2124,8 +2507,8 @@ function calTweakedPubkey(pubKey, tweak){
 			<div class="h2">【Bech32Check Address - Bech32Check地址】</div>
 			<p>The final Bech32Check encoding address=Prefix+Separator+Data(Version+Bech32 Address)+Checksum.</p><br/>
 			<p>最终的Bech32Check编码地址=前缀+分隔符+数据(版本号+Bech32地址)+校验码。</p><br/>
-			<button id="BTN_nativeFinal" onclick="document.getElementById('nativeFinal').value = document.getElementById('HRP_Seperator').value + document.getElementById('nativeVer_nativeAddrtoBech32').value + document.getElementById('nativeChecksumtoBech32').value;">concate(Prefix+Separator(1)+Version+Address+Checksum) - 拼接(前缀+分隔符(1)+版本+地址+校验码)</button>
-			<button onclick="document.getElementById('HRP_Seperator').value = bech32.decode(document.getElementById('nativeFinal').value, 'bech32').prefix + '1'; var words = bech32.decode(document.getElementById('nativeFinal').value, 'bech32').words; document.getElementById('nativeVer_nativeAddrtoWords').value = words; document.getElementById('nativeVer_nativeAddrtoBech32').value = ''; for(i=0;i<words.length;i++){document.getElementById('nativeVer_nativeAddrtoBech32').value += bech32.CHARSET.charAt(words[i])} var checksum = bech32.createChecksum(document.getElementById('HRP_Seperator').value.substr(0,2), document.getElementById('nativeVer_nativeAddrtoWords').value.split(','), 'bech32'); document.getElementById('nativeChecksum').value = checksum; document.getElementById('nativeChecksumtoBech32').value = ''; for(i=0;i<checksum.length;i++){document.getElementById('nativeChecksumtoBech32').value += bech32.CHARSET.charAt(checksum[i])}">Inverse Calculation - 逆算</button>
+			<button id="BTN_nativeFinal" onclick="document.getElementById('nativeFinal').value = document.getElementById('HRP_Separator').value + document.getElementById('nativeVer_nativeAddrtoBech32').value + document.getElementById('nativeChecksumtoBech32').value;">concate(Prefix+Separator(1)+Version+Address+Checksum) - 拼接(前缀+分隔符(1)+版本+地址+校验码)</button>
+			<button onclick="document.getElementById('HRP_Separator').value = bech32.decode(document.getElementById('nativeFinal').value, 'bech32').prefix + '1'; var words = bech32.decode(document.getElementById('nativeFinal').value, 'bech32').words; document.getElementById('nativeVer_nativeAddrtoWords').value = words; document.getElementById('nativeVer_nativeAddrtoBech32').value = ''; for(i=0;i<words.length;i++){document.getElementById('nativeVer_nativeAddrtoBech32').value += bech32.CHARSET.charAt(words[i])} var checksum = bech32.createChecksum(document.getElementById('HRP_Separator').value.substr(0,2), document.getElementById('nativeVer_nativeAddrtoWords').value.split(','), 'bech32'); document.getElementById('nativeChecksum').value = checksum; document.getElementById('nativeChecksumtoBech32').value = ''; for(i=0;i<checksum.length;i++){document.getElementById('nativeChecksumtoBech32').value += bech32.CHARSET.charAt(checksum[i])}">Inverse Calculation - 逆算</button>
 			<button id="BTN_nativeFinalQrcode" onclick="deleteQrcode('nativeFinalQrcode'); generateQrcode(document.getElementById('nativeFinal').value, 'nativeFinalQrcode');">Generate QR code - 生成二维码</button><br/>
 			<textarea id="nativeFinal" rows="2" spellcheck="false"></textarea><br/>
 			<div id="nativeFinalQrcode"></div>
@@ -2140,23 +2523,28 @@ function calTweakedPubkey(pubKey, tweak){
 			
 			<!--Tag(标签)-->
 			<div class="h2">【Tag - 标签】</div>
-			<p>TapLeaf: the tag of leaf hash; TapBranch: the tag of branch hash; TapTweak: the tag of tweak hash (the tagged hash of the public key and the merkle root.)</p><br/>
-			<p>1TapLeaf：叶子哈希的标签；TapBranch：枝干哈希的标签；TapTweak：Tweak哈希的标签（即公钥和脚本树根的哈希的标签。）</p><br/>
+			<p>TapLeaf: the tag of leaf hash; TapBranch: the tag of branch hash; TapTweak: the tag of tweak hash (the tagged hash of the public key and the merkle root).</p><br/>
+			<p>1TapLeaf：叶子哈希的标签；TapBranch：枝干哈希的标签；TapTweak：Tweak哈希的标签（即公钥和脚本树根的哈希的标签）。</p><br/>
 			<textarea id="tagofHash" rows="1" spellcheck="false">TapTweak</textarea><br/><br/>
 			
 			<!--Tweak-->
 			<div class="h2">【Tweak】</div>
 			<p>Here, the parity flag prefix of the public key needs to be removed, including only the 256-bit X coordinate value.</p><br/>
 			<p>这里的公钥需要去掉奇偶标志前缀，只包括64位的X坐标值。</p><br/>
-			<button id="BTN_Tweak" onclick="if(document.getElementById('pubKey').value == ''){alert('The public key is empty. - 公钥为空。'); return false;} if(isHex(document.getElementById('pubKey').value)==false){alert('The input value is not in hexadecimal format. - 输入值不是16进制。'); return false;} if(document.getElementById('pubKey').value.length > 66){alert('The taproot address does not support the uncompressed public key. - Taproot地址不支持非压缩公钥！'); return false;} document.getElementById('Tweak').value = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256(document.getElementById('tagofHash').value) + Crypto.SHA256(document.getElementById('tagofHash').value) + document.getElementById('pubKey').value.substr(2) + document.getElementById('rootHash').value));">SHA256(hexToBytes(SHA256(Tag) + SHA256(Tag) + pubKey.substr(2) + RootHash))</button>
+			<button id="BTN_Tweak" onclick="if(document.getElementById('pubKey').value == ''){alert('The public key is empty. - 公钥为空。'); return false;} if(document.getElementById('pubKey').value.length > 66){alert('The taproot address does not support the uncompressed public key. - Taproot地址不支持非压缩公钥！'); return false;} document.getElementById('Tweak').value = Crypto.SHA256(Crypto.util.hexToBytes(Crypto.SHA256(document.getElementById('tagofHash').value) + Crypto.SHA256(document.getElementById('tagofHash').value) + document.getElementById('pubKey').value.substr(2) + document.getElementById('rootHash').value));">SHA256(hexToBytes(SHA256(Tag) + SHA256(Tag) + pubKey.substr(2) + RootHash))</button>
 			<textarea id="Tweak" rows="2" spellcheck="false"></textarea><br/><br/>
 	
 			<!--Tweaked Public Key -Tweaked公钥-->
 			<div class="h2">【Tweaked Public Key -Tweaked公钥】</div>
 			<p>Calculate on the SECP256K1 elliptic curve: TweakedPubkey = Pubkey + G * Tweak. Notice: (1) Here, all compressed public keys must have their prefixes set to 02 before calculating the Tweaked public key. (2) The tweaked public key does not include a parity prefix flag.</p><br/>
 			<p>在SECP256K1椭圆曲线上计算：TweakedPubkey = Pubkey + G * Tweak。注意：(1)在计算Tweaked公钥之前，所有压缩公钥的前缀都要设置成02。(2)Tweaked公钥不包括奇偶位前缀。</p><br/>
-			<button id="BTN_TweakedPubkey" onclick="document.getElementById('TweakedPubkey').value = calTweakedPubkey(document.getElementById('pubKey').value, document.getElementById('Tweak').value);">Calculate: pubKey + G * Tweak - 计算：pubKey + G * Tweak</button>
+			<button id="BTN_TweakedPubkey" onclick="if(document.getElementById('pubKey').value == ''){alert('The public key is empty. - 公钥为空。'); return false;} document.getElementById('TweakedPubkey').value = calTweakedPubkey(document.getElementById('pubKey').value, document.getElementById('Tweak').value); document.getElementById('TweakedPrikey').value = calTweakedPrikey(document.getElementById('priBS58C').value, document.getElementById('Tweak').value);">Calculate: pubKey + G * Tweak - 计算：pubKey + G * Tweak</button>
 			<textarea id="TweakedPubkey" rows="2" spellcheck="false"></textarea><br/><br/>
+			
+			<!--Tweaked Private Key - Tweaked私钥-->
+			<p>Corresponding Tweaked Private Key = (Prikey + Tweak) mod p.</p><br/>
+			<p>对应的Tweaked私钥 = (Prikey + Tweak) mod p。</p>
+			<textarea id="TweakedPrikey" rows="2" spellcheck="false" style="background-color:#eeeeee" readonly=""></textarea><br/><br/>
 			
 			<!--toWords(Tweaked Pubkey)-->
 			<div class="h2">【Bech32 Tweaked Pubkey - Bech32 Tweaked公钥】</div>
@@ -2174,7 +2562,7 @@ function calTweakedPubkey(pubKey, tweak){
 			<textarea id="taprootVer" rows="1" style="background-color:#eeeeee" readonly="">1</textarea><br/><br/>
 	
 			<!--concate(Version+Bech32 Tweaked Pubkey) - 拼接(地址版本号+Bech32 Tweaked公钥-->
-			<button id="BTN_taprootVer_taprootAddrtoWords" onclick="var words = document.getElementById('taprootAddrtoWords').value.split(','); words.unshift(parseInt(document.getElementById('taprootVer').value)); document.getElementById('taprootVer_taprootAddrtoWords').value = words; document.getElementById('taprootVer_taprootAddrtoBech32').value = ''; for(i=0;i<words.length;i++){document.getElementById('taprootVer_taprootAddrtoBech32').value += bech32.CHARSET.charAt(words[i])} var checksum = bech32.createChecksum(document.getElementById('taproot_HRP_Seperator').value.substr(0,2), document.getElementById('taprootVer_taprootAddrtoWords').value.split(','), 'bech32m'); document.getElementById('taprootChecksum').value = checksum; document.getElementById('taprootChecksumtoBech32').value = ''; for(i=0;i<checksum.length;i++){document.getElementById('taprootChecksumtoBech32').value += bech32.CHARSET.charAt(checksum[i])}">concate(Version+Bech32 Tweaked Pubkey) - 拼接(版本号+Bech32 Tweaked公钥)</button>
+			<button id="BTN_taprootVer_taprootAddrtoWords" onclick="var words = document.getElementById('taprootAddrtoWords').value.split(','); words.unshift(parseInt(document.getElementById('taprootVer').value)); document.getElementById('taprootVer_taprootAddrtoWords').value = words; document.getElementById('taprootVer_taprootAddrtoBech32').value = ''; for(i=0;i<words.length;i++){document.getElementById('taprootVer_taprootAddrtoBech32').value += bech32.CHARSET.charAt(words[i])} var checksum = bech32.createChecksum(document.getElementById('taproot_HRP_Separator').value.substr(0,2), document.getElementById('taprootVer_taprootAddrtoWords').value.split(','), 'bech32m'); document.getElementById('taprootChecksum').value = checksum; document.getElementById('taprootChecksumtoBech32').value = ''; for(i=0;i<checksum.length;i++){document.getElementById('taprootChecksumtoBech32').value += bech32.CHARSET.charAt(checksum[i])}">concate(Version+Bech32 Tweaked Pubkey) - 拼接(版本号+Bech32 Tweaked公钥)</button>
 			<button onclick="document.getElementById('taprootVer').value = document.getElementById('taprootVer_taprootAddrtoWords').value.split(',').slice(0,1); var words = document.getElementById('taprootVer_taprootAddrtoWords').value.split(','); document.getElementById('taprootAddrtoWords').value = words.slice(1,words.length); document.getElementById('taprootAddrtobech32').value = ''; for(i=1;i<words.length;i++){document.getElementById('taprootAddrtobech32').value += bech32.CHARSET.charAt(words[i])}">Inverse Calculation - 逆算</button><br/>
 			<textarea id="taprootVer_taprootAddrtoWords" rows="2" spellcheck="false"></textarea><br/><br/>
 			<p>Corresponding Bech32 Tweaked Pubkey with version number in Bech32 format (version number 1, corresponding Bech32 encoding is p).</p><br/>
@@ -2183,9 +2571,9 @@ function calTweakedPubkey(pubKey, tweak){
 			
 			<!--Bech32 Address Prefix (HRP)+Separator(1) - Bech32地址前缀(HRP)+分隔符(1)-->
 			<div class="h2">【Bech32 Address Prefix(HRP)+Separator(1) - Bech32地址前缀(HRP)+分隔符(1)】</div>
-			<p>The main network address prefix is bc, the test network address prefix is tb, and the separator is the number 1.</p><br/>
-			<p>主网地址前缀是bc，测试网地址前缀是tb，分隔符是数字1。</p>
-			<textarea id="taproot_HRP_Seperator" rows="1">bc1</textarea><br/><br/>
+			<p>bc1 - Main Net address prefix(bc) + Separator(1); tb1 - Test Net address prefix(tb) + Separator(1).</p><br/>
+			<p>bc1 - 主网地址前缀(bc) + 分隔符(1)；tb1 - 测试网地址前缀(tb) + 分隔符(1)。</p>
+			<textarea id="taproot_HRP_Separator" rows="1" oninput="document.getElementById('BTN_taprootVer_taprootAddrtoWords').onclick();">bc1</textarea><br/><br/>
 	
 			<!--Address Checksum - 地址校验码-->
 			<div class="h2">【Address Checksum - 地址校验码】</div>
@@ -2200,8 +2588,8 @@ function calTweakedPubkey(pubKey, tweak){
 			<div class="h2">【Bech32mCheck Address - Bech32mCheck地址】</div>
 			<p>The final Bech32mCheck encoding address=Prefix+Separator+Data(Version+Bech32 Tweaked Pubkey)+Checksum.</p><br/>
 			<p>最终的Bech32mCheck编码地址=前缀+分隔符+数据(版本号+Bech32 Tweaked公钥)+校验码。</p><br/>
-			<button id="BTN_taprootFinal" onclick="document.getElementById('taprootFinal').value = document.getElementById('taproot_HRP_Seperator').value + document.getElementById('taprootVer_taprootAddrtoBech32').value + document.getElementById('taprootChecksumtoBech32').value;">concate(Prefix+Separator(1)+Version+TweakedPubkey+Checksum) - 拼接(前缀+分隔符(1)+版本+Tweaked公钥+校验码)</button>
-			<button onclick="document.getElementById('taproot_HRP_Seperator').value = bech32.decode(document.getElementById('taprootFinal').value, 'bech32m').prefix + '1'; var words = bech32.decode(document.getElementById('taprootFinal').value, 'bech32m').words; document.getElementById('taprootVer_taprootAddrtoWords').value = words; document.getElementById('taprootVer_taprootAddrtoBech32').value = ''; for(i=0;i<words.length;i++){document.getElementById('taprootVer_taprootAddrtoBech32').value += bech32.CHARSET.charAt(words[i])} var checksum = bech32.createChecksum(document.getElementById('HRP_Seperator').value.substr(0,2), document.getElementById('taprootVer_taprootAddrtoWords').value.split(','), 'bech32m'); document.getElementById('taprootChecksum').value = checksum; document.getElementById('taprootChecksumtoBech32').value = ''; for(i=0;i<checksum.length;i++){document.getElementById('taprootChecksumtoBech32').value += bech32.CHARSET.charAt(checksum[i])}">Inverse Calculation - 逆算</button>
+			<button id="BTN_taprootFinal" onclick="document.getElementById('taprootFinal').value = document.getElementById('taproot_HRP_Separator').value + document.getElementById('taprootVer_taprootAddrtoBech32').value + document.getElementById('taprootChecksumtoBech32').value;">concate(Prefix+Separator(1)+Version+TweakedPubkey+Checksum) - 拼接(前缀+分隔符(1)+版本+Tweaked公钥+校验码)</button>
+			<button onclick="document.getElementById('taproot_HRP_Separator').value = bech32.decode(document.getElementById('taprootFinal').value, 'bech32m').prefix + '1'; var words = bech32.decode(document.getElementById('taprootFinal').value, 'bech32m').words; document.getElementById('taprootVer_taprootAddrtoWords').value = words; document.getElementById('taprootVer_taprootAddrtoBech32').value = ''; for(i=0;i<words.length;i++){document.getElementById('taprootVer_taprootAddrtoBech32').value += bech32.CHARSET.charAt(words[i])} var checksum = bech32.createChecksum(document.getElementById('HRP_Separator').value.substr(0,2), document.getElementById('taprootVer_taprootAddrtoWords').value.split(','), 'bech32m'); document.getElementById('taprootChecksum').value = checksum; document.getElementById('taprootChecksumtoBech32').value = ''; for(i=0;i<checksum.length;i++){document.getElementById('taprootChecksumtoBech32').value += bech32.CHARSET.charAt(checksum[i])}">Inverse Calculation - 逆算</button>
 			<button id="BTN_taprootFinalQrcode" onclick="deleteQrcode('taprootFinalQrcode'); generateQrcode(document.getElementById('taprootFinal').value, 'taprootFinalQrcode');">Generate QR code - 生成二维码</button><br/>
 			<textarea id="taprootFinal" rows="2" spellcheck="false"></textarea><br/>
 			<div id="taprootFinalQrcode"></div>
@@ -2389,12 +2777,12 @@ function calTweakedPubkey(pubKey, tweak){
 		<p>(1) ALL(1): Before signing a certain input, the script of other inputs needs to be set to empty, and script_length should be set to 0.</p><br/>
 		<p>(2) NONE(2):</p><br/>
 		<p>Input part: Before signing a certain input, the script of other inputs needs to be set to empty, script_length should be set to 0, and sequence should be set to 0.</p><br/>
-		<p>Output part: The output should be set to empty, and tx_out_length should be set to 0.</p><br/>
+		<p>Output part: The output should be set to empty, and tx_out_count should be set to 0.</p><br/>
 		<p>(3) SINGLE(3):</p><br/>
 		<p>Input part: Before signing a certain input, the script of other inputs needs to be set to empty, script_length should be set to 0, and sequence should be set to 0.</p><br/>
 		<p>Output part: Outputs with an index lower than the index of the signing input are set to empty, i.e., value is set to - 1 (equivalent to 0xffffffffffffffff because it is the complement of - 1), script is set to empty, and script_length is set to 0. Outputs with an index higher than the index of the signing input are deleted. Special case: When the number of inputs is greater than the number of outputs, for the "extra" inputs, directly sign 0x0000000000000000000000000000000000000000000000000000000000000001.</p><br/>
 		<p>(4) When used in combination with ANYONECANPAY:</p><br/>
-		<p>Input part: Only the input to be signed is retained, i.e., the value of tx_in_length is 1.</p><br/>
+		<p>Input part: Only the input to be signed is retained, i.e., the value of tx_in_count is 1.</p><br/>
 		<p>Output part: The same as above.</p><br/>
 		<p>(2.2) Serialization rules for SegWit transactions (WitnessV0) used for signing:</p><br/>
 		<p>(2.2.1) ALL(1):</p><br/>
@@ -2422,9 +2810,9 @@ function calTweakedPubkey(pubKey, tweak){
 		<p>2、下面的Raw交易字符串是由上面的JSON全量转换得到，包含了签名需要的全部信息，但不能直接用来签。</p><br/>
 		<p>（2.1）非隔离见证交易，用于签名的序列化规则：</p><br/>
 		<p>（1）ALL(1)：在签名某个input之前，需要将其他input的script置空，script_length为0。</p><br/>
-		<p>（2）NONE(2)：input部分：在签名某个input之前，需要将其他input的script置空，script_length为0，sequence置为0；output部分：将output置空，tx_out_length为0。</p><br/>
+		<p>（2）NONE(2)：input部分：在签名某个input之前，需要将其他input的script置空，script_length为0，sequence置为0；output部分：将output置空，tx_out_count为0。</p><br/>
 		<p>（3）SINGLE(3)：input部分：在签名某个input之前，需要将其他input的script置空，script_length为0，sequence置为0；output部分：低于与签名相同index的output被置空，即value置为-1（等价置为0xffffffffffffffff，因为其与-1互为补码），script置空，script_length置为0；高于与签名相同index的output被删除。特殊情况：当input数量大于output数量时，对于“多余”的input，直接对0x0000000000000000000000000000000000000000000000000000000000000001签名。</p><br/>
-		<p>（4）与ANYONECANPAY组合使用：input部分：只保留需要签名的input，即tx_in_length值为1；output部分：与上面相同。</p><br/>
+		<p>（4）与ANYONECANPAY组合使用：input部分：只保留需要签名的input，即tx_in_count值为1；output部分：与上面相同。</p><br/>
 		<p>（2.2）隔离见证交易(WitnessV0)，用于签名的序列化规则：</p><br/>
 		<p>（2.2.1）ALL(1):</p><br/>
 		<p>（1）nVersion of the transaction (4-byte little endian)</p><br/>
@@ -2529,33 +2917,80 @@ function calTweakedPubkey(pubKey, tweak){
 	
 	<div class="h1">Verify Signature - 验证签名</div>
 	<div class="VerifySignature" style="margin-bottom:10px">
-		<!--信息-->
-		<div class="h2">【Information - 信息】</div>
-		<p>This only supports signing and verifying hexadecimal information. If the information you provide is not in hexadecimal, you can convert the information to be signed into hexadecimal through binary conversion or hash function before signing.</p><br/>
-		<p>这里只支持对16进制的信息进行签名和验证。如果您提供的信息不是16进制的，可以通过进制转换或通过哈希函数将待签名信息转换成16进制信息，再进行签名。</p><br/>
-		<textarea id="message" rows="7" spellcheck="false"></textarea><br/><br/>
+		<button id="buttonECDSA" class="buttonh1" style="background:#428BCA; color:white" onclick="document.getElementById('buttonECDSA').style = 'background:#428BCA; color:white'; document.getElementById('buttonSchnorr').style = ''; document.getElementById('divECDSA').style.display = 'block'; document.getElementById('divSchnorr').style.display = 'none';">ECDSA Signature</button>
+		<button id="buttonSchnorr" class="buttonh1" onclick="document.getElementById('buttonSchnorr').style = 'background:#428BCA; color:white'; document.getElementById('buttonECDSA').style = ''; document.getElementById('divSchnorr').style.display = 'block'; document.getElementById('divECDSA').style.display = 'none';">Schnorr Signature</button>	
+
+		<!--ECDSA Signature-->
+		<div id="divECDSA">    
+			<!--信息-->
+			<div class="h2">【Information - 信息】</div>
+			<textarea id="Information_ECDSA" rows="7" spellcheck="false"></textarea><br/><br/>
+			
+			<!--信息哈希值-->
+			<div class="h2">【Information Hash - 信息哈希值】</div> 
+			<button onclick="if(document.getElementById('Information_ECDSA').value == ''){alert('The Information is empty. - 信息为空。'); return false;} document.getElementById('infoHash_ECDSA').value = Crypto.SHA256(document.getElementById('Information_ECDSA').value);">SHA256(Information)</button>
+			<button onclick="if(document.getElementById('Information_ECDSA').value == ''){alert('The Information is empty. - 信息为空。'); return false;} document.getElementById('infoHash_ECDSA').value = Crypto.SHA256(Crypto.util.hexToBytes(document.getElementById('Information_ECDSA').value));">SHA256(hexToBytes(Information))</button>
+			<button onclick="document.getElementById('Information_ECDSA').value = document.getElementById('infoHash_ECDSA').value;">Copy up</button>
+			<textarea id="infoHash_ECDSA" rows="1" spellcheck="false"></textarea><br/><br/>                                             
+
+			<!--私钥-->
+			<div class="h2">【WIF privateKey - WIF格式私钥】</div>
+			<textarea id="priKeyforSign_ECDSA" rows="2" spellcheck="false">KzrtdPijywkRTL5dCfNUHw3E2GGKAuv2AGkRYiUEYsLdf2C8Lreb</textarea><br/><br/>
+			
+			<!--签名-->
+			<div class="h2">【Signature - 签名】</div>
+			<p>For security reasons, random numbers are introduced during the signature process. When signing the same information, the signature value changes every time, but each signature value is valid.</p><br/>
+			<p>为了安全，签名时引入了随机数，对同一信息进行签名时，每次签名值都发生变化，但每个签名值都是有效的。</p><br/>
+			<button onclick="if(document.getElementById('infoHash_ECDSA').value == ''){alert('The information hash to be signed is empty! - 待签名信息哈希值为空！'); return false;} if(document.getElementById('priKeyforSign_ECDSA').value == ''){alert('The private key is empty! - 私钥为空！'); return false;} document.getElementById('Signature_ECDSA').value = ECDSASign(document.getElementById('infoHash_ECDSA').value, document.getElementById('priKeyforSign_ECDSA').value);">Sign - 签名</button>
+			<button onclick="deleteQrcode('SignatureQrcode_ECDSA'); generateQrcode(document.getElementById('Signature_ECDSA').value, 'SignatureQrcode_ECDSA');">Generate QR code - 生成二维码</button><br/>
+			<textarea id="Signature_ECDSA" rows="3" spellcheck="false"></textarea><br/>
+			<div id="SignatureQrcode_ECDSA"></div>
+			
+			<!--公钥-->
+			<div class="h2">【publicKey - 公钥】</div>
+			<textarea id="pubKeyforVerify_ECDSA" rows="3" spellcheck="false">030a03305291de800f724b7e6dc47a785675dd009dcf6afba0e3b3eb6e9e6b253c</textarea><br/><br/>
+			
+			<!--签名-->
+			<div class="h2">【Verify Signature - 验证签名】</div>
+			<button onclick="if(document.getElementById('infoHash_ECDSA').value == ''){alert('The information to be signed is empty! - 待签名信息哈希值为空！'); return false;} if(document.getElementById('Signature_ECDSA').value == ''){alert('The signature is empty! - 签名为空！'); return false;} if(document.getElementById('pubKeyforVerify_ECDSA').value == ''){alert('The public key is empty! - 公钥为空！'); return false;} document.getElementById('VerifyResult_ECDSA').value = ECDSAVerify(document.getElementById('infoHash_ECDSA').value, document.getElementById('Signature_ECDSA').value, document.getElementById('pubKeyforVerify_ECDSA').value);">Verify Signature - 验证签名</button><br/>
+			<textarea id="VerifyResult_ECDSA" rows="1" spellcheck="false"></textarea>
+		</div>
 		
-		<!--私钥-->
-		<div class="h2">【WIF privateKey - WIF格式私钥】</div>
-		<textarea id="priKeytoSign" rows="2" spellcheck="false"></textarea><br/><br/>
-		
-		<!--签名-->
-		<div class="h2">【Sign - 签名】</div>
-		<p>1. Actually, it is to sign the double hash value SHA256 (hexTobytes (SHA256 (hexTobytes) to be signed). 2. For security reasons, random numbers are introduced during the signature process. When signing the same information, the signature value changes every time, but each signature value is valid.</p><br/>
-		<p>1.实际上是对待签名的双哈希值SHA256(hexToBytes(SHA256(hexToBytes(待签名信息))))进行签名。2.为了安全，签名时引入了随机数，对同一信息进行签名时，每次签名值都发生变化，但每个签名值都是有效的。</p><br/>
-		<button onclick="if(document.getElementById('message').value == ''){alert('The information to be signed is empty! - 待签名信息为空！'); return false;} if(isHex(document.getElementById('message').value)== false){alert('The information to be signed is not in hexadecimal format. - 待签名信息不是16进制！'); return false;} if(document.getElementById('priKeytoSign').value == ''){alert('The private key is empty! - 私钥为空！'); return false;} document.getElementById('Sign').value = Sign(document.getElementById('message').value, document.getElementById('priKeytoSign').value);">Sign - 签名</button>
-		<button id="BTN_SignQrcode" onclick="deleteQrcode('SignQrcode'); generateQrcode(document.getElementById('Sign').value, 'SignQrcode');">Generate QR code - 生成二维码</button><br/>
-		<textarea id="Sign" rows="3" spellcheck="false"></textarea><br/><br/>
-		<div id="SignQrcode"></div>
-		
-		<!--公钥-->
-		<div class="h2">【publicKey - 公钥】</div>
-		<textarea id="pubKeytoVerify" rows="3" spellcheck="false"></textarea><br/><br/>
-		
-		<!--签名-->
-		<div class="h2">【Verify Signature - 验证签名】</div>
-		<button onclick="if(document.getElementById('message').value == ''){alert('The information to be signed is empty! - 待签名信息为空！'); return false;} if(document.getElementById('Sign').value == ''){alert('The signed information is empty! - 已签名信息为空！'); return false;} if(document.getElementById('pubKeytoVerify').value == ''){alert('The public key is empty! - 公钥为空！'); return false;} document.getElementById('Verify').value = Verify(document.getElementById('message').value, document.getElementById('Sign').value, document.getElementById('pubKeytoVerify').value);">Verify Signature - 验证签名</button><br/>
-		<textarea id="Verify" rows="1" spellcheck="false"></textarea>
+		<!--Schnorr Signature-->
+		<div id="divSchnorr" style="display:none">
+			<!--信息-->
+			<div class="h2">【Information - 信息】</div>
+			<textarea id="Information_Schnorr" rows="7" spellcheck="false"></textarea><br/><br/>
+			
+			<!--信息哈希值-->
+			<div class="h2">【Information Hash - 信息哈希值】</div> 
+			<button onclick="if(document.getElementById('Information_Schnorr').value == ''){alert('The Information is empty. - 信息为空。'); return false;} document.getElementById('infoHash_Schnorr').value = Crypto.SHA256(document.getElementById('Information_Schnorr').value);">SHA256(Information)</button>
+			<button onclick="if(document.getElementById('Information_Schnorr').value == ''){alert('The Information is empty. - 信息为空。'); return false;} document.getElementById('infoHash_Schnorr').value = Crypto.SHA256(Crypto.util.hexToBytes(document.getElementById('Information_Schnorr').value));">SHA256(hexToBytes(Information))</button>
+			<button onclick="document.getElementById('Information_Schnorr').value = document.getElementById('infoHash_Schnorr').value;">Copy up</button>
+			<textarea id="infoHash_Schnorr" rows="1" spellcheck="false"></textarea><br/><br/>                                             
+
+			<!--私钥-->
+			<div class="h2">【Private Key - 私钥】</div>
+			<textarea id="priKeyforSign_Schnorr" rows="2" spellcheck="false">6ca396fd58338a4f0210f59fa0a89839d67cb5b7948e1f5cc4a7f5f9cbb1fc5a</textarea><br/><br/>
+			
+			<!--签名-->
+			<div class="h2">【Signature - 签名】</div>
+			<p>For security reasons, random numbers are introduced during the signature process. When signing the same information, the signature value changes every time, but each signature value is valid.</p><br/>
+			<p>为了安全，签名时引入了随机数，对同一信息进行签名时，每次签名值都发生变化，但每个签名值都是有效的。</p><br/>
+			<button onclick="if(document.getElementById('infoHash_Schnorr').value == ''){alert('The information hash to be signed is empty! - 待签名信息哈希值为空！'); return false;} if(document.getElementById('priKeyforSign_Schnorr').value == ''){alert('The private key is empty! - 私钥为空！'); return false;} document.getElementById('Signature_Schnorr').value = SchnorrSign(document.getElementById('infoHash_Schnorr').value, document.getElementById('priKeyforSign_Schnorr').value);">Sign - 签名</button>
+			<button onclick="deleteQrcode('SignatureQrcode_Schnorr'); generateQrcode(document.getElementById('Signature_Schnorr').value, 'SignatureQrcode_Schnorr');">Generate QR code - 生成二维码</button><br/>
+			<textarea id="Signature_Schnorr" rows="3" spellcheck="false"></textarea><br/>
+			<div id="SignatureQrcode_Schnorr"></div>
+			
+			<!--公钥-->
+			<div class="h2">【publicKey - 公钥】</div>
+			<textarea id="pubKeyforVerify_Schnorr" rows="3" spellcheck="false">0a03305291de800f724b7e6dc47a785675dd009dcf6afba0e3b3eb6e9e6b253c</textarea><br/><br/>
+			
+			<!--签名-->
+			<div class="h2">【Verify Signature - 验证签名】</div>
+			<button onclick="if(document.getElementById('infoHash_Schnorr').value == ''){alert('The information to be signed is empty! - 待签名信息哈希值为空！'); return false;} if(document.getElementById('Signature_Schnorr').value == ''){alert('The signature is empty! - 签名为空！'); return false;} if(document.getElementById('pubKeyforVerify_Schnorr').value == ''){alert('The public key is empty! - 公钥为空！'); return false;} document.getElementById('VerifyResult_Schnorr').value = SchnorrVerify(document.getElementById('infoHash_Schnorr').value, document.getElementById('Signature_Schnorr').value, document.getElementById('pubKeyforVerify_Schnorr').value);">Verify Signature - 验证签名</button><br/>
+			<textarea id="VerifyResult_Schnorr" rows="1" spellcheck="false"></textarea>
+        </div>		
 	</div>
 </div>
 
