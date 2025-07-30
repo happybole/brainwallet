@@ -218,13 +218,13 @@ function strToBinary(str) {
 }
 
 //获取地址余额
-function getBalance(addr) {
+function getBalance(url, addr) {
 	var addr = addr.trim();
 	if (addr == "") {
 		document.getElementById('txBalance').value = "";
 		return false;
 	}
-	var url = document.getElementById('txBalURL').value + addr;
+	var url = url.replace("$ADDRESS", addr);
 	var xmlhttp = new XMLHttpRequest();
 	xmlhttp.open("GET", url, true);
 	xmlhttp.send();
@@ -232,7 +232,15 @@ function getBalance(addr) {
 	xmlhttp.onreadystatechange = function() {
 		if (this.readyState == 4 && this.status == 200) {
 			var myObj = JSON.parse(this.responseText);
-			var balance = myObj[addr]["final_balance"] / 100000000;
+			if (url.replace(addr, "$ADDRESS") == "https://blockchain.info/balance?active=$ADDRESS") {
+				var balance = myObj[addr]["final_balance"] / 100000000;
+			}
+			else if (url.replace(addr, "$ADDRESS") == "https://mempool.space/api/address/$ADDRESS" || url.replace(addr, "$ADDRESS") == "https://blockstream.info/api/address/$ADDRESS") {
+				var balance = (myObj["chain_stats"]["funded_txo_sum"] - myObj["chain_stats"]["spent_txo_sum"]) / 100000000;
+			}
+			else if (url.replace(addr, "$ADDRESS") == "https://api.blockcypher.com/v1/btc/main/addrs/$ADDRESS/balance") {
+				var balance = myObj["final_balance"] / 100000000;
+			}
 			document.getElementById('txBalance').value = toNonExponential(balance);  //异步执行，与最初的调用程序已无关联，所以无法作为getBalance的返回值
 		}
 		else if (this.readyState != 4) {
@@ -242,11 +250,10 @@ function getBalance(addr) {
 			document.getElementById('txBalance').value = "";  //异步执行，与最初的调用程序已无关联，所以无法作为getBalance的返回值
 		}
 	};
-		//document.getElementById('txBalance').value = 50;
 }
 
 //获取UTXO
-function getUnspent(addr, UTXO) { //这里的UTXO是解析JSON交易时产生的UTXO（即所选的UTXO）
+function getUnspent(url, addr, UTXO) { //这里的UTXO是解析JSON交易时产生的UTXO（即所选的UTXO）
 	var addr = addr.trim();
 	if (addr == "") {
 		document.getElementById('txUnspent').value = "";
@@ -254,14 +261,26 @@ function getUnspent(addr, UTXO) { //这里的UTXO是解析JSON交易时产生的
 		document.getElementById('txUnspentBalSum').value = "";
 		return false;
 	}
-	var url = document.getElementById('txUnspentURL').value + addr;
+	var url = url.replace("$ADDRESS", addr);
 	var xmlhttp = new XMLHttpRequest();
 	xmlhttp.open("GET", url, true);
 	xmlhttp.send();
 
 	xmlhttp.onreadystatechange = function() {
 		if (this.readyState == 4 && this.status == 200) {
-			var myObj = JSON.parse(this.responseText);
+			var rt = this.responseText;
+			if (url.replace(addr, "$ADDRESS") == "https://mempool.space/api/address/$ADDRESS/utxo" || url.replace(addr, "$ADDRESS") == "https://blockstream.info/api/address/$ADDRESS/utxo") {
+				rt = "{\"unspent_outputs\":" + rt + "}";
+				rt = rt.replace(new RegExp("txid", "g"), "tx_hash_big_endian");
+				rt = rt.replace(new RegExp("vout", "g"), "tx_output_n");
+				var script = Crypto.util.bytesToHex(scriptToBytes(addrToScript(addr)).buffer);
+				rt = rt.replace(new RegExp('"value"', "g"), '"script":"' + script + '","value"');
+			}
+			else if (url.replace(addr, "$ADDRESS") == "https://api.blockcypher.com/v1/btc/main/addrs/$ADDRESS?unspentOnly=true&includeScript=true&limit=2000") {
+				rt = rt.replace("txrefs", "unspent_outputs");
+				rt = rt.replace(new RegExp("tx_hash", "g"), "tx_hash_big_endian");
+			}
+			var myObj = JSON.parse(rt);
 			document.getElementById('txUnspent').value = JSON.stringify(myObj, null, '\t');
 			if (typeof(UTXO) == "undefined") {
 				var num = myObj["unspent_outputs"].length;
@@ -545,43 +564,37 @@ function txToJSON(version, UTXO, sequence, txDest, txWitness, txLockTime) {
 		var addr = txDest[i].addr;
 
 		if (addrType(addr) == "P2PK") {  //txDest[i].addr中存储的是公钥，解析Raw时用到
-			var pubKey = addr;
-			var script = pubKey + " " + "OP_CHECKSIG";
+			var script = addrToScript(addr);
 			txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
 			txJSON.tx_out[i].p2pk_script = script;
 		}
 		if (addrType(addr) == "P2PKH") {
-			var hexAddr = Crypto.util.bytesToHex(Bitcoin.Base58.decode(addr)).substr(2,40);
-			var script = "OP_DUP" + " " + "OP_HASH160" + " " + hexAddr + " " + "OP_EQUALVERIFY" + " " + "OP_CHECKSIG";
+			var script = addrToScript(addr);
 			txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
 			txJSON.tx_out[i].p2pkh_script = script;
 		}
 		if (addrType(addr) == "P2MS") {
-			txJSON.tx_out[i].script_length = scriptToBytes(addr).buffer.length; //包含OP_LEN
-			txJSON.tx_out[i].p2pkh_script = addr;
+			var script = addrToScript(addr);
+			txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
+			txJSON.tx_out[i].p2pkh_script = script;
 		}
 		if (addrType(addr) == "P2SH") {
-			var hexAddr = Crypto.util.bytesToHex(Bitcoin.Base58.decode(addr)).substr(2,40);
-			var script = "OP_HASH160" + " " + hexAddr + " " + "OP_EQUAL";
+			var script = addrToScript(addr);
 			txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
 			txJSON.tx_out[i].p2sh_script = script;
 		}
 		if (addrType(addr) == "P2WPKH" || addrType(addr) == "P2WSH") {
-			var words = bech32.decode(addr, "bech32").words; 
-			var hexAddr = Crypto.util.bytesToHex(bech32.fromWords(words.slice(1,words.length)));
-			var script = "0" + " " + hexAddr;
+			var script = addrToScript(addr);
 			txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
 			txJSON.tx_out[i].p2wpkh_v0_script = script;
 		}
 		if (addrType(addr) == "P2TR") {
-			var words = bech32.decode(addr, "bech32m").words; 
-			var hexAddr = Crypto.util.bytesToHex(bech32.fromWords(words.slice(1,words.length)));
-			var script = "1" + " " + hexAddr;
+			var script = addrToScript(addr);
 			txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
 			txJSON.tx_out[i].p2tr_script = script;
 		}
 		if (addrType(addr) == "OP_RETURN") {
-			var script = addr;
+			var script = addrToScript(addr);
 			txJSON.tx_out[i].script_length = scriptToBytes(script).buffer.length; //包含OP_LEN
 			txJSON.tx_out[i].return_script = script;
 		}
@@ -611,6 +624,38 @@ function txToJSON(version, UTXO, sequence, txDest, txWitness, txLockTime) {
 	return txJSON;
 }
 
+function addrToScript(addr) {
+	if (addrType(addr) == "P2PK") {  //txDest[i].addr中存储的是公钥，解析Raw时用到
+		var pubKey = addr;
+		var script = pubKey + " " + "OP_CHECKSIG";
+	}
+	if (addrType(addr) == "P2PKH") {
+		var hexAddr = Crypto.util.bytesToHex(Bitcoin.Base58.decode(addr)).substr(2,40);
+		var script = "OP_DUP" + " " + "OP_HASH160" + " " + hexAddr + " " + "OP_EQUALVERIFY" + " " + "OP_CHECKSIG";
+	}
+	if (addrType(addr) == "P2MS") {
+		var script = addr;
+	}
+	if (addrType(addr) == "P2SH") {
+		var hexAddr = Crypto.util.bytesToHex(Bitcoin.Base58.decode(addr)).substr(2,40);
+		var script = "OP_HASH160" + " " + hexAddr + " " + "OP_EQUAL";
+	}                   
+	if (addrType(addr) == "P2WPKH" || addrType(addr) == "P2WSH") {
+		var words = bech32.decode(addr, "bech32").words; 
+		var hexAddr = Crypto.util.bytesToHex(bech32.fromWords(words.slice(1,words.length)));
+		var script = "0" + " " + hexAddr;
+	}
+	if (addrType(addr) == "P2TR") {
+		var words = bech32.decode(addr, "bech32m").words; 
+		var hexAddr = Crypto.util.bytesToHex(bech32.fromWords(words.slice(1,words.length)));
+		var script = "1" + " " + hexAddr;
+	}
+	if (addrType(addr) == "OP_RETURN") {
+		var script = addr;
+	}
+	return script;
+}
+
 ////将JSON格式的交易解析为原始输入形式////////////////////////////////
 function txParseJSON(txJSON, txNet) {
 	var txRaw = txToRaw(txJSON, 1, ""); //1、原始输入形式不体现HashType，所以写死“1”；2、ScriptType不影响法币地址计算，所以写死为空
@@ -620,7 +665,7 @@ function txParseJSON(txJSON, txNet) {
 		txSourceAddr = pubKeyToAddr(txSourceAddr, txNet);
 	}
 	document.getElementById('txSourceAddr').value = txSourceAddr;
-	getBalance(txSourceAddr);
+	getBalance(document.getElementById('txBalURL').value, txSourceAddr);
 	
 	//由于getUnspent是异步执行，所以需要先计算转出金额之和，再计算矿工费
 	var ele = document.getElementById('newDest').childNodes;
@@ -643,7 +688,7 @@ function txParseJSON(txJSON, txNet) {
 		txDestValue[i].value = toNonExponential(myObj.txDest[i].value);
 	}
 	
-	getUnspent(txSourceAddr, myObj.UTXO);
+	getUnspent(document.getElementById('txUnspentURL').value, txSourceAddr, myObj.UTXO);
 	myObj.sequence.sort((a, b) => b - a); //数组降序排列
 	document.getElementById('txSequence').value = myObj.sequence[0];
 	document.getElementById('txLockTime').value = myObj.txLockTime;
@@ -2603,13 +2648,23 @@ function SchnorrVerify(msgHash, signature, tweakedPubkey) {
 		<select id="txNet"><option value="mainnet" selected="selected">mainnet</option><option value="testnet">testnet</option></select><br/><br/>
 	
 		<div class="h2">【Source Addr - 发币地址】</div>
-		<textarea id="txSourceAddr" rows="1" spellcheck="false" oninput="getBalance(document.getElementById('txSourceAddr').value); getUnspent(document.getElementById('txSourceAddr').value); ResizeTextarea(document.getElementById('txSourceAddr'),1,2);">12c6DSiU4Rq3P4ZxziKxzrL5LmMBrzjrJX</textarea>
+		<textarea id="txSourceAddr" rows="1" spellcheck="false" oninput="getBalance(document.getElementById('txBalURL').value, document.getElementById('txSourceAddr').value); getUnspent(document.getElementById('txUnspentURL').value, document.getElementById('txSourceAddr').value); ResizeTextarea(document.getElementById('txSourceAddr'),1,2);">12c6DSiU4Rq3P4ZxziKxzrL5LmMBrzjrJX</textarea>
 		<p>Balance Source - 余额来源</p>
-		<textarea id="txBalURL" rows="1" spellcheck="false" oninput="getBalance(document.getElementById('txSourceAddr').value);">https://blockchain.info/balance?active=</textarea>
+		<select id="txBalURL" oninput="getBalance(document.getElementById('txBalURL').value, document.getElementById('txSourceAddr').value);">
+			<option value="https://blockchain.info/balance?active=$ADDRESS" selected="selected">https://blockchain.info/balance?active=$ADDRESS</option>
+			<option value="https://mempool.space/api/address/$ADDRESS">https://mempool.space/api/address/$ADDRESS</option>
+			<option value="https://blockstream.info/api/address/$ADDRESS">https://blockstream.info/api/address/$ADDRESS</option>
+			<option value="https://api.blockcypher.com/v1/btc/main/addrs/$ADDRESS/balance">https://api.blockcypher.com/v1/btc/main/addrs/$ADDRESS/balance</option>
+		</select><br/><br/>
 		<p>Balance - 余额(BTC)</p>
 		<textarea id="txBalance" rows="1"></textarea><br/><br/>
 		<p>UTXO Source - UTXO来源</p>
-		<textarea id="txUnspentURL" rows="1" spellcheck="false" oninput="getUnspent(document.getElementById('txSourceAddr').value);">https://blockchain.info/unspent?active=</textarea>
+		<select id="txUnspentURL" oninput="getUnspent(document.getElementById('txUnspentURL').value, document.getElementById('txSourceAddr').value);">
+			<option value="https://blockchain.info/unspent?active=$ADDRESS" selected="selected">https://blockchain.info/unspent?active=$ADDRESS</option>
+			<option value="https://mempool.space/api/address/$ADDRESS/utxo">https://mempool.space/api/address/$ADDRESS/utxo</option>
+			<option value="https://blockstream.info/api/address/$ADDRESS/utxo">https://blockstream.info/api/address/$ADDRESS/utxo</option>
+			<option value="https://api.blockcypher.com/v1/btc/main/addrs/$ADDRESS?unspentOnly=true&includeScript=true&limit=2000">https://api.blockcypher.com/v1/btc/main/addrs/$ADDRESS?unspentOnly=true&includeScript=true&limit=2000</option>
+		</select><br/><br/>
 		<button onclick="sortUnspent(document.getElementById('txUnspent').value);">Sort by UTXO balance in ascending order - 按UTXO余额升序排列</button>
 		<textarea id="txUnspent" rows="20" spellcheck="false"></textarea><br/>
 		<p>Enter the sequence number or range of UTXOs used to construct transactions, separated by commas in English, for example: 1,4-10,12.</><br/>
@@ -3614,7 +3669,7 @@ var floatMod = (arg1, arg2) => {
 
 <!--网页初始化的时候，执行-->
 <!--因为getBalance()和getUnspent()都调用了toNonExponential()，所以要把这段程序放在toNonExponential()之后-->
-<script>if(document.getElementById('txSourceAddr').value != ""){getBalance(document.getElementById('txSourceAddr').value); getUnspent(document.getElementById('txSourceAddr').value);}</script>
+<script>if(document.getElementById('txSourceAddr').value != ""){getBalance(document.getElementById('txBalURL').value, document.getElementById('txSourceAddr').value); getUnspent(document.getElementById('txUnspentURL').value, document.getElementById('txSourceAddr').value);}</script>
 
 
 <a href="https://github.com/happybole/brainwallet/releases" target="_blank">GitHub Repository (zip)</a>
